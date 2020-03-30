@@ -7,7 +7,7 @@ OBJS=bmd.o bmd_declink.o DeckLinkAPIDispatch.o
 
 CFLAGS=-O2 -g -Wall -Wextra -I$(YAMIPATH)/include
 
-CXXFLAGS=-O2 -g -Wall -Wextra -I$(BMSDKINCPATH) -I$(YAMIPATH)/include
+CXXFLAGS=-O2 -g -Wall -Wextra -I$(BMSDKINCPATH)
 
 LDFLAGS=-L$(YAMIPATH)/lib -Wl,-rpath=$(YAMIPATH)/lib
 

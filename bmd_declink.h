@@ -16,15 +16,17 @@
  * limitations under the License.
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#ifndef _BMD_DECLINK_H_
+#define _BMD_DECLINK_H_
 
-/*****************************************************************************/
-int
-main(int argc, char** argv)
+#ifdef __cplusplus
+extern "C"
 {
-    (void)argc;
-    (void)argv;
-    return 0;
+#endif
+
+#ifdef __cplusplus
 }
+#endif
+
+#endif
+

@@ -23,6 +23,8 @@
 
 #include <DeckLinkAPI.h>
 
+#include "bmd_declink.h"
+
 class DeckLinkCaptureDelegate : public IDeckLinkInputCallback
 {
     public:
