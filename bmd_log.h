@@ -48,11 +48,20 @@
 #define LOGLN10(_args)
 #endif
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
 int
 log_init(int flags, int log_level, const char* filename);
 int
 log_deinit(void);
 int
 logln(int log_level, const char* format, ...);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

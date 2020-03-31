@@ -25,6 +25,7 @@
 
 #include "bmd_declink.h"
 #include "bmd_error.h"
+#include "bmd_log.h"
 
 class DeckLinkCaptureDelegate : public IDeckLinkInputCallback
 {
@@ -55,7 +56,7 @@ struct bmd_declink
 /******************************************************************************/
 DeckLinkCaptureDelegate::DeckLinkCaptureDelegate(void)
 {
-    printf("DeckLinkCaptureDelegate::DeckLinkCaptureDelegate:\n");
+    LOGLN0((LOG_INFO, LOGS, LOGP));
     m_refCount = 0;
     pthread_mutex_init(&m_mutex, NULL);
 }
@@ -63,7 +64,7 @@ DeckLinkCaptureDelegate::DeckLinkCaptureDelegate(void)
 /******************************************************************************/
 DeckLinkCaptureDelegate::~DeckLinkCaptureDelegate(void)
 {
-    printf("DeckLinkCaptureDelegate::~DeckLinkCaptureDelegate:\n");
+    LOGLN0((LOG_INFO, LOGS, LOGP));
     pthread_mutex_destroy(&m_mutex);
 }
 
@@ -72,14 +73,14 @@ HRESULT DeckLinkCaptureDelegate::QueryInterface(REFIID iid, LPVOID* ppv)
 {
     (void)iid;
     (void)ppv;
-    printf("DeckLinkCaptureDelegate::QueryInterface:\n");
+    LOGLN0((LOG_INFO, LOGS, LOGP));
     return E_NOINTERFACE;
 }
 
 /******************************************************************************/
 ULONG DeckLinkCaptureDelegate::AddRef(void)
 {
-    printf("DeckLinkCaptureDelegate::AddRef:\n");
+    LOGLN0((LOG_INFO, LOGS, LOGP));
     pthread_mutex_lock(&m_mutex);
     m_refCount++;
     pthread_mutex_unlock(&m_mutex);
@@ -89,7 +90,7 @@ ULONG DeckLinkCaptureDelegate::AddRef(void)
 /******************************************************************************/
 ULONG DeckLinkCaptureDelegate::Release(void)
 {
-    printf("DeckLinkCaptureDelegate::Release:\n");
+    LOGLN0((LOG_INFO, LOGS, LOGP));
     pthread_mutex_lock(&m_mutex);
     m_refCount--;
     pthread_mutex_unlock(&m_mutex);
@@ -110,7 +111,7 @@ HRESULT DeckLinkCaptureDelegate::
     (void)events;
     (void)mode;
     (void)flags;
-    printf("DeckLinkCaptureDelegate::VideoInputFormatChanged:\n");
+    LOGLN0((LOG_INFO, LOGS, LOGP));
     return S_OK;
 }
 
@@ -121,7 +122,7 @@ HRESULT DeckLinkCaptureDelegate::
 {
     (void)videoFrame;
     (void)audioFrame;
-    printf("DeckLinkCaptureDelegate::VideoInputFrameArrived:\n");
+    LOGLN0((LOG_INFO, LOGS, LOGP));
     return S_OK;
 }
 
@@ -149,25 +150,23 @@ bmd_declink_create(void** obj)
     deckLinkIterator = CreateDeckLinkIteratorInstance();
     if (deckLinkIterator == NULL)
     {
-        printf("bmd_declink_create: CreateDeckLinkIteratorInstance failed\n");
+        LOGLN0((LOG_ERROR, LOGS "CreateDeckLinkIteratorInstance failed",
+                LOGP));
         return 1;
     }
     deckLink = NULL;
     result = deckLinkIterator->Next(&deckLink);
     if ((result != S_OK) || (deckLink == NULL))
     {
-        printf("bmd_declink_create: Unable to get DeckLink device\n");
+        LOGLN0((LOG_ERROR, LOGS "Unable to get DeckLink device", LOGP));
         return 1;
     }
-
     deckLinkIterator->Release();
-
     result = deckLink->QueryInterface(IID_IDeckLinkInput,
                                       (void**)(&(self->deckLinkInput)));
     if (result != S_OK)
     {
-        printf("bmd_declink_create: deckLink->QueryInterface "
-               "IID_IDeckLinkInput failed\n");
+        LOGLN0((LOG_ERROR, LOGS "IID_IDeckLinkInput failed", LOGP));
         return 1;
     }
     deckLinkAttributes = NULL;
@@ -175,8 +174,7 @@ bmd_declink_create(void** obj)
                                       (void**)(&deckLinkAttributes));
     if (result != S_OK)
     {
-        printf("bmd_declink_create: deckLink->QueryInterface "
-               "IID_IDeckLinkAttributes failed\n");
+        LOGLN0((LOG_ERROR, LOGS "IID_IDeckLinkAttributes failed", LOGP));
         return 1;
     }
     result = deckLinkAttributes->GetFlag
@@ -185,16 +183,14 @@ bmd_declink_create(void** obj)
     {
         if (formatDetectionSupported)
         {
-            printf("bmd_declink_create: Format detection is supported on "
-                   "this device\n");
+            LOGLN0((LOG_ERROR, LOGS "Format detection is supported on "
+                    "this device", LOGP));
         }
     }
     result = self->deckLinkInput->GetDisplayModeIterator(&displayModeIterator);
     if (result != S_OK)
     {
-        printf("bmd_declink_create: "
-               "deckLink->g_deckLinkInput->GetDisplayModeIterator "
-               "failed\n");
+        LOGLN0((LOG_ERROR, LOGS "GetDisplayModeIterator failed", LOGP));
         return 1;
     }
     displayMode = NULL;
@@ -204,7 +200,7 @@ bmd_declink_create(void** obj)
         result = displayMode->GetName((const char**)&displayModeName);
         if (result == S_OK)
         {
-            printf("name %s\n", displayModeName);
+            LOGLN0((LOG_INFO, LOGS "name %s", LOGP, displayModeName));
             //if (strcmp(displayModeName, "NTSC") == 0)
             //if (strcmp(displayModeName, "HD 720p 60") == 0)
             //if (strcmp(displayModeName, "HD 1080i 59.94") == 0)
@@ -233,26 +229,18 @@ bmd_declink_create(void** obj)
         }
         else
         {
-            printf("error getting name\n");
+            LOGLN0((LOG_ERROR, LOGS "error getting name", LOGP));
         }
         displayMode->Release();
         result = displayModeIterator->Next(&displayMode);
     }
-
-    //result = displayModeIterator->Next(&displayMode);
-    //if ((result != S_OK) || (displayMode == NULL))
-    //{
-    //    printf("init_capture: Unable to get display mode\n");
-    //    return 1;
-    //}
     result = displayMode->GetName((const char**)&displayModeName);
     if (result != S_OK)
     {
         displayModeName = (char *)malloc(32);
         snprintf(displayModeName, 32, "[index %d]", 0);
     }
-    printf("bmd_declink_create: display mode %s\n", displayModeName);
-
+    LOGLN0((LOG_INFO, LOGS "display mode %s", LOGP, displayModeName));
     delegate1 = new DeckLinkCaptureDelegate();
     self->deckLinkInput->SetCallback(delegate1);
     dmode = displayMode->GetDisplayMode();
@@ -260,14 +248,14 @@ bmd_declink_create(void** obj)
                                                    bmdVideoInputFlagDefault);
     if (result != S_OK)
     { 
-        printf("bmd_declink_create: EnableVideoInput failed\n");
+        LOGLN0((LOG_ERROR, LOGS "EnableVideoInput failed", LOGP));
         return 1;
     }
     result = self->deckLinkInput->EnableAudioInput(bmdAudioSampleRate48kHz,
                                                    16, 2);
     if (result != S_OK)
     {
-        printf("bmd_declink_create: EnableAudioInput failed\n");
+        LOGLN0((LOG_ERROR, LOGS "EnableAudioInput failed", LOGP));
         return 1;
     }
     *obj = self;
@@ -296,7 +284,7 @@ bmd_declink_start(void* obj)
     HRESULT result;
     struct bmd_declink* self;
 
-    printf("bmd_declink_start:\n");
+    LOGLN0((LOG_INFO, LOGS, LOGP));
     self = (struct bmd_declink*)obj;
     result = self->deckLinkInput->StartStreams();
     if (result != S_OK)
@@ -313,7 +301,7 @@ bmd_declink_stop(void* obj)
     HRESULT result;
     struct bmd_declink* self;
 
-    printf("bmd_declink_stop:\n");
+    LOGLN0((LOG_INFO, LOGS, LOGP));
     self = (struct bmd_declink*)obj;
     result = self->deckLinkInput->StopStreams();
     if (result != S_OK)
