@@ -16,26 +16,12 @@
  * limitations under the License.
  */
 
-#ifndef _BMD_DECLINK_H_
-#define _BMD_DECLINK_H_
-
-#ifdef __cplusplus
-extern "C"
-{
-#endif
+#ifndef _BMD_UTILS_H_
+#define _BMD_UTILS_H_
 
 int
-bmd_declink_create(void** obj);
+get_mstime(int* mstime);
 int
-bmd_declink_delete(void* obj);
-int
-bmd_declink_start(void* obj);
-int
-bmd_declink_stop(void* obj);
-
-#ifdef __cplusplus
-}
-#endif
+hex_dump(const void* data, int bytes);
 
 #endif
-

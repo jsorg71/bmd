@@ -16,26 +16,27 @@
  * limitations under the License.
  */
 
-#ifndef _BMD_DECLINK_H_
-#define _BMD_DECLINK_H_
+#ifndef _BMD_PEER_H_
+#define _BMD_PEER_H_
 
-#ifdef __cplusplus
-extern "C"
-{
-#endif
+#define BMD_PEER_SUBSCRIBE_AUDIO        1
+#define BMD_PEER_REQUEST_VIDEO          2
 
 int
-bmd_declink_create(void** obj);
+bmd_peer_get_fds(struct bmd_info* hdhrd, int* max_fd,
+                 fd_set* rfds, fd_set* wfds);
 int
-bmd_declink_delete(void* obj);
+bmd_peer_check_fds(struct bmd_info* bmd, fd_set* rfds, fd_set* wfds);
 int
-bmd_declink_start(void* obj);
+bmd_peer_add_fd(struct bmd_info* bmd, int sck);
 int
-bmd_declink_stop(void* obj);
-
-#ifdef __cplusplus
-}
-#endif
+bmd_peer_cleanup(struct bmd_info* bmd);
+int
+bmd_peer_queue_all_video(struct bmd_info* bmd);
+int
+bmd_peer_queue_all_audio(struct bmd_info* bmd, struct stream* out_s);
+int
+bmd_peer_queue(struct peer_info* peer, struct stream* out_s);
 
 #endif
 

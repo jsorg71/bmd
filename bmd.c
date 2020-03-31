@@ -20,11 +20,29 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "bmd_declink.h"
+#include "bmd_log.h"
+
 /*****************************************************************************/
 int
 main(int argc, char** argv)
 {
+    void* bmd_declink;
+
     (void)argc;
     (void)argv;
+
+    log_init(LOG_FLAG_STDOUT, 4, "");
+
+    if (bmd_declink_create(&bmd_declink) == 0)
+    {
+        bmd_declink_start(bmd_declink);
+        usleep(3 * 1024 * 1024);
+        bmd_declink_stop(bmd_declink);
+        bmd_declink_delete(bmd_declink);
+    }
+
+    log_deinit();
+
     return 0;
 }
