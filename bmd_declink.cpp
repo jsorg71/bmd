@@ -23,6 +23,7 @@
 
 #include <DeckLinkAPI.h>
 
+#include "bmd.h"
 #include "bmd_declink.h"
 #include "bmd_error.h"
 #include "bmd_log.h"
@@ -46,6 +47,8 @@ class DeckLinkCaptureDelegate : public IDeckLinkInputCallback
     private:
         ULONG m_refCount;
         pthread_mutex_t m_mutex;
+    public:
+        struct bmd_info* m_bmd;
 };
 
 struct bmd_declink
@@ -120,33 +123,120 @@ HRESULT DeckLinkCaptureDelegate::
     VideoInputFrameArrived(IDeckLinkVideoInputFrame* videoFrame,
                            IDeckLinkAudioInputPacket* audioFrame)
 {
-    (void)videoFrame;
-    (void)audioFrame;
+    void* audio_data;
+    long audio_frame_count;
+
+    void* video_data;
+    int video_width;
+    int video_height;
+
     LOGLN0((LOG_INFO, LOGS, LOGP));
+    if (videoFrame != NULL)
+    {
+        video_data = NULL;
+        videoFrame->GetBytes(&video_data);
+        video_width = videoFrame->GetWidth();
+        video_height = videoFrame->GetHeight();
+        LOGLN0((LOG_INFO, LOGS "video_data %p video_width %d video_height %d",
+                LOGP, video_data, video_width, video_height));
+    }
+    if (audioFrame != NULL)
+    {
+        audio_data = NULL;
+        audioFrame->GetBytes(&audio_data);
+        audio_frame_count = audioFrame->GetSampleFrameCount();
+        LOGLN0((LOG_INFO, LOGS "audio_data %p audio_frame_count %d",
+                LOGP, audio_data, audio_frame_count));
+    }
     return S_OK;
 }
 
 /******************************************************************************/
+static IDeckLink*
+bmd_declink_get_IDeckLink(IDeckLinkIterator* deckLinkIterator)
+{
+    IDeckLink* deckLink;
+
+    for (;;)
+    {
+        if (deckLinkIterator->Next(&deckLink) != S_OK)
+        {
+            break;
+        }
+        if (deckLink != NULL)
+        {
+            return deckLink;
+        }
+    }
+    return NULL;
+}
+
+/******************************************************************************/
+static IDeckLinkInput*
+bmd_declink_get_IDeckLinkInput(IDeckLink* deckLink)
+{
+    void* rv;
+    HRESULT result;
+
+    result = deckLink->QueryInterface(IID_IDeckLinkInput, &rv);
+    if (result == S_OK)
+    {
+        return (IDeckLinkInput*)rv;
+    }
+    return NULL;
+}
+
+/******************************************************************************/
+static IDeckLinkDisplayMode*
+bmd_declink_get_IDeckLinkDisplayMode(IDeckLinkInput* deckLinkInput)
+{
+    IDeckLinkDisplayModeIterator* displayModeIterator;
+    IDeckLinkDisplayMode* displayMode;
+    const char* displayModeName;
+
+    if (deckLinkInput->GetDisplayModeIterator(&displayModeIterator) != S_OK)
+    {
+        return NULL;
+    }
+    for (;;)
+    {
+        if (displayModeIterator->Next(&displayMode) != S_OK)
+        {
+            break;
+        }
+        if (displayMode->GetName(&displayModeName) != S_OK)
+        {
+            displayMode->Release();
+            break;
+        }
+        if (strcmp(displayModeName, "720p59.94") == 0)
+        {
+            delete displayModeName;
+            displayModeIterator->Release();
+            return displayMode;
+        }
+        delete displayModeName;
+        displayMode->Release();
+    }
+    displayModeIterator->Release();
+    return NULL;
+}
+
+/******************************************************************************/
 int
-bmd_declink_create(void** obj)
+bmd_declink_create(struct bmd_info* bmd, void** obj)
 {
     HRESULT result;
     struct bmd_declink* self;
     IDeckLink* deckLink;
-    IDeckLinkAttributes* deckLinkAttributes;
-    IDeckLinkDisplayModeIterator* displayModeIterator;
     IDeckLinkDisplayMode* displayMode;
     BMDDisplayMode dmode;
-    bool formatDetectionSupported;
-    char* displayModeName;
-    DeckLinkCaptureDelegate* delegate1;
+    const char* modelName;
+    const char* displayName;
+    DeckLinkCaptureDelegate* myDelegate;
     IDeckLinkIterator* deckLinkIterator;
+    IDeckLinkInput* deckLinkInput;
 
-    self = (struct bmd_declink*)calloc(1, sizeof(struct bmd_declink));
-    if (self == NULL)
-    {
-        return BMD_ERROR_MEMORY;
-    }
     deckLinkIterator = CreateDeckLinkIteratorInstance();
     if (deckLinkIterator == NULL)
     {
@@ -154,110 +244,60 @@ bmd_declink_create(void** obj)
                 LOGP));
         return 1;
     }
-    deckLink = NULL;
-    result = deckLinkIterator->Next(&deckLink);
-    if ((result != S_OK) || (deckLink == NULL))
-    {
-        LOGLN0((LOG_ERROR, LOGS "Unable to get DeckLink device", LOGP));
-        return 1;
-    }
+    deckLink = bmd_declink_get_IDeckLink(deckLinkIterator);
     deckLinkIterator->Release();
-    result = deckLink->QueryInterface(IID_IDeckLinkInput,
-                                      (void**)(&(self->deckLinkInput)));
-    if (result != S_OK)
+    if (deckLink == NULL)
     {
-        LOGLN0((LOG_ERROR, LOGS "IID_IDeckLinkInput failed", LOGP));
+        LOGLN0((LOG_ERROR, LOGS "bmd_declink_get_IDeckLink failed", LOGP));
         return 1;
     }
-    deckLinkAttributes = NULL;
-    result = deckLink->QueryInterface(IID_IDeckLinkAttributes,
-                                      (void**)(&deckLinkAttributes));
-    if (result != S_OK)
+    deckLink->GetModelName(&modelName);
+    deckLink->GetDisplayName(&displayName);
+    LOGLN0((LOG_INFO, LOGS "deckLink %p modelName [%s] displayName [%s]",
+            LOGP, deckLink, modelName, displayName));
+    delete modelName;
+    delete displayName;
+    deckLinkInput = bmd_declink_get_IDeckLinkInput(deckLink);
+    deckLink->Release();
+    if (deckLinkInput == NULL)
     {
-        LOGLN0((LOG_ERROR, LOGS "IID_IDeckLinkAttributes failed", LOGP));
+        LOGLN0((LOG_ERROR, LOGS "bmd_declink_get_IDeckLinkInput failed",
+                LOGP));
         return 1;
     }
-    result = deckLinkAttributes->GetFlag
-        (BMDDeckLinkSupportsInputFormatDetection, &formatDetectionSupported);
-    if (result == S_OK)
+    displayMode = bmd_declink_get_IDeckLinkDisplayMode(deckLinkInput);
+    if (displayMode == NULL)
     {
-        if (formatDetectionSupported)
-        {
-            LOGLN0((LOG_ERROR, LOGS "Format detection is supported on "
-                    "this device", LOGP));
-        }
-    }
-    result = self->deckLinkInput->GetDisplayModeIterator(&displayModeIterator);
-    if (result != S_OK)
-    {
-        LOGLN0((LOG_ERROR, LOGS "GetDisplayModeIterator failed", LOGP));
+        LOGLN0((LOG_ERROR, LOGS "bmd_declink_get_IDeckLinkDisplayMode failed",
+                LOGP));
+        deckLinkInput->Release();
         return 1;
+
     }
-    displayMode = NULL;
-    result = displayModeIterator->Next(&displayMode);
-    while (result == S_OK)
-    {
-        result = displayMode->GetName((const char**)&displayModeName);
-        if (result == S_OK)
-        {
-            LOGLN0((LOG_INFO, LOGS "name %s", LOGP, displayModeName));
-            //if (strcmp(displayModeName, "NTSC") == 0)
-            //if (strcmp(displayModeName, "HD 720p 60") == 0)
-            //if (strcmp(displayModeName, "HD 1080i 59.94") == 0)
-            //if (strcmp(displayModeName, "HD 1080p 23.98") == 0)
-            //if (strcmp(displayModeName, "NTSC Progressive") == 0)
-            //if (strcmp(displayModeName, "HD 720p 59.94") == 0)
-            if (strcmp(displayModeName, "720p59.94") == 0)
-            {
-                break;
-            }
-            /*
-            name NTSC                ok
-            name NTSC 23.98          not ok
-            name PAL                 not ok
-            name NTSC Progressive    not ok
-            name PAL Progressive     not ok
-            name HD 1080p 23.98      not ok
-            name HD 1080p 24         not ok
-            name HD 1080p 25
-            name HD 1080p 29.97
-            name HD 1080p 30
-            name HD 1080i 50
-            name HD 1080i 59.94      ok
-            * HD 720p 60
-            */
-        }
-        else
-        {
-            LOGLN0((LOG_ERROR, LOGS "error getting name", LOGP));
-        }
-        displayMode->Release();
-        result = displayModeIterator->Next(&displayMode);
-    }
-    result = displayMode->GetName((const char**)&displayModeName);
-    if (result != S_OK)
-    {
-        displayModeName = (char *)malloc(32);
-        snprintf(displayModeName, 32, "[index %d]", 0);
-    }
-    LOGLN0((LOG_INFO, LOGS "display mode %s", LOGP, displayModeName));
-    delegate1 = new DeckLinkCaptureDelegate();
-    self->deckLinkInput->SetCallback(delegate1);
     dmode = displayMode->GetDisplayMode();
-    result = self->deckLinkInput->EnableVideoInput(dmode, bmdFormat8BitYUV,
-                                                   bmdVideoInputFlagDefault);
+    displayMode->Release();
+    myDelegate = new DeckLinkCaptureDelegate();
+    myDelegate->m_bmd = bmd;
+    deckLinkInput->SetCallback(myDelegate);
+    result = deckLinkInput->EnableVideoInput(dmode, bmdFormat8BitYUV,
+                                             bmdVideoInputFlagDefault);
     if (result != S_OK)
     { 
         LOGLN0((LOG_ERROR, LOGS "EnableVideoInput failed", LOGP));
+        deckLinkInput->Release();
         return 1;
     }
-    result = self->deckLinkInput->EnableAudioInput(bmdAudioSampleRate48kHz,
-                                                   16, 2);
+    result = deckLinkInput->EnableAudioInput(bmdAudioSampleRate48kHz,
+                                             bmdAudioSampleType16bitInteger,
+                                             2);
     if (result != S_OK)
     {
         LOGLN0((LOG_ERROR, LOGS "EnableAudioInput failed", LOGP));
+        deckLinkInput->Release();
         return 1;
     }
+    self = (struct bmd_declink*)calloc(1, sizeof(struct bmd_declink));
+    self->deckLinkInput = deckLinkInput;
     *obj = self;
     return BMD_ERROR_NONE;
 }

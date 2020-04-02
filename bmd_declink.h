@@ -25,7 +25,7 @@ extern "C"
 #endif
 
 int
-bmd_declink_create(void** obj);
+bmd_declink_create(struct bmd_info* bmd, void** obj);
 int
 bmd_declink_delete(void* obj);
 int

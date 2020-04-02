@@ -23,7 +23,7 @@
 #define BMD_PEER_REQUEST_VIDEO          2
 
 int
-bmd_peer_get_fds(struct bmd_info* hdhrd, int* max_fd,
+bmd_peer_get_fds(struct bmd_info* bmd, int* max_fd,
                  fd_set* rfds, fd_set* wfds);
 int
 bmd_peer_check_fds(struct bmd_info* bmd, fd_set* rfds, fd_set* wfds);

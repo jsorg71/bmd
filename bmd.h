@@ -61,6 +61,12 @@ struct bmd_info
     int video_frame_count;
     int last_decode_mstime;
     int is_running;
+
+    //char* video_frame;
+    //char* audio_frame;
+    //int video_frame_bytes;
+    //int audio_frame_bytes;
+
 };
 
 #endif
