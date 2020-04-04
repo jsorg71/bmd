@@ -21,10 +21,15 @@
 
 #define BMD_UDS "/tmp/wtv_bmd_%d"
 
+#define BMD_VERSION_MAJOR   0
+#define BMD_VERSION_MINOR   1
+#define BMD_AUDIO_LATENCY   100
+
 #define BMD_PDU_CODE_SUBSCRIBE_AUDIO        1
 #define BMD_PDU_CODE_AUDIO                  2
 #define BMD_PDU_CODE_REQUEST_VIDEO_FRAME    3
 #define BMD_PDU_CODE_VIDEO                  4
+#define BMD_PDU_CODE_VERSION                5
 
 struct bmd_info
 {

@@ -192,21 +192,30 @@ bmd_process_av(struct bmd_info* bmd)
             {
                 LOGLN0((LOG_ERROR, LOGS "yami_surface_create failed", LOGP));
                 bmd->yami = NULL;
+                free(nv12_data);
                 return 1;
             }
             bmd->video_frame_count = 0;
+            bmd->yami_width = av_info->vwidth;
+            bmd->yami_height = av_info->vheight;
         }
         if (yami_surface_get_ybuffer(bmd->yami, &ydata,
                                      &ydata_stride_bytes) != YI_SUCCESS)
         {
             LOGLN0((LOG_ERROR, LOGS "yami_surface_get_ybuffer failed", LOGP));
+            free(nv12_data);
             return 1;
         }
         src8 = nv12_data;
         dst8 = ydata;
+        bytes = av_info->vwidth;
+        if (bytes > ydata_stride_bytes)
+        {
+            bytes = ydata_stride_bytes;
+        }
         for (index = 0; index < av_info->vheight; index++)
         {
-            memcpy(dst8, src8, av_info->vwidth);
+            memcpy(dst8, src8, bytes);
             src8 += av_info->vwidth;
             dst8 += ydata_stride_bytes;
         }
@@ -214,13 +223,19 @@ bmd_process_av(struct bmd_info* bmd)
                                       &uvdata_stride_bytes) != YI_SUCCESS)
         {
             LOGLN0((LOG_ERROR, LOGS "yami_surface_get_uvbuffer failed", LOGP));
+            free(nv12_data);
             return 1;
         }
         src8 = nv12_data + av_info->vwidth * av_info->vheight;
         dst8 = uvdata;
+        bytes = av_info->vwidth;
+        if (bytes > uvdata_stride_bytes)
+        {
+            bytes = uvdata_stride_bytes;
+        }
         for (index = 0; index < av_info->vheight; index += 2)
         {
-            memcpy(dst8, src8, av_info->vwidth);
+            memcpy(dst8, src8, bytes);
             src8 += av_info->vwidth;
             dst8 += uvdata_stride_bytes;
         }

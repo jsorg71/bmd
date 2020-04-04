@@ -236,6 +236,28 @@ bmd_peer_process_msg_subscribe_audio(struct bmd_info* bmd,
 
 /*****************************************************************************/
 static int
+bmd_peer_process_msg_version(struct bmd_info* bmd,
+                             struct peer_info* peer,
+                             struct stream* in_s)
+{
+    int version_major;
+    int version_minor;
+
+    (void)bmd;
+    (void)peer;
+    if (!s_check_rem(in_s, 8))
+    {
+        return BMD_ERROR_RANGE;
+    }
+    in_uint32_le(in_s, version_major);
+    in_uint32_le(in_s, version_minor);
+    LOGLN0((LOG_INFO, LOGS "connection client version %d %d",
+            LOGP, version_major, version_minor));
+    return BMD_ERROR_NONE;
+}
+
+/*****************************************************************************/
+static int
 bmd_peer_process_msg(struct bmd_info* bmd, struct peer_info* peer)
 {
     int pdu_code;
@@ -264,6 +286,9 @@ bmd_peer_process_msg(struct bmd_info* bmd, struct peer_info* peer)
             break;
         case BMD_PDU_CODE_REQUEST_VIDEO_FRAME:
             rv = bmd_peer_process_msg_request_video_frame(bmd, peer, in_s);
+            break;
+        case BMD_PDU_CODE_VERSION:
+            rv = bmd_peer_process_msg_version(bmd, peer, in_s);
             break;
     }
     return rv;
@@ -519,6 +544,39 @@ bmd_peer_check_fds(struct bmd_info* bmd, fd_set* rfds, fd_set* wfds)
 }
 
 /*****************************************************************************/
+static int
+bmd_queue_version(struct bmd_info* bmd, struct peer_info* peer)
+{
+    struct stream* out_s;
+
+    (void)bmd;
+    out_s = (struct stream*)calloc(1, sizeof(struct stream));
+    if (out_s == NULL)
+    {
+        return BMD_ERROR_MEMORY;
+    }
+    out_s->data = (char*)malloc(1024);
+    if (out_s->data == NULL)
+    {
+        free(out_s);
+        return BMD_ERROR_MEMORY;
+    }
+    out_s->p = out_s->data;
+    out_uint32_le(out_s, BMD_PDU_CODE_VERSION);
+    out_uint32_le(out_s, 32);
+    out_uint32_le(out_s, BMD_VERSION_MAJOR);
+    out_uint32_le(out_s, BMD_VERSION_MINOR);
+    out_uint32_le(out_s, BMD_AUDIO_LATENCY);
+    out_uint8s(out_s, 12);
+    out_s->end = out_s->p;
+    out_s->p = out_s->data;
+    bmd_peer_queue(peer, out_s);
+    free(out_s->data);
+    free(out_s);
+    return BMD_ERROR_NONE;
+}
+
+/*****************************************************************************/
 int
 bmd_peer_add_fd(struct bmd_info* bmd, int sck)
 {
@@ -540,6 +598,7 @@ bmd_peer_add_fd(struct bmd_info* bmd, int sck)
         bmd->peer_tail->next = peer;
         bmd->peer_tail = peer;
     }
+    bmd_queue_version(bmd, peer);
     return BMD_ERROR_NONE;
 }
 
