@@ -19,6 +19,25 @@
 #ifndef _BMD_DECLINK_H_
 #define _BMD_DECLINK_H_
 
+struct bmd_av_info
+{
+    int flags;
+    int vformat;
+    int vwidth;
+    int vheight;
+    char* vdata;
+    int vdata_alloc_bytes;
+    int aformat;
+    int achannels;
+    int abytes_per_sample;
+    int asamples;
+    int pad0;
+    char* adata;
+    int adata_alloc_bytes;
+    int pad1;
+    pthread_mutex_t av_mutex;
+};
+
 #ifdef __cplusplus
 extern "C"
 {

@@ -22,6 +22,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <pthread.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -48,6 +49,202 @@ struct settings_info
     int daemonize;
     int pad0;
 };
+
+/******************************************************************************/
+/* convert yuy2 to nv12, 16 bit to 12 bit
+   yuyv to y plane uv plane */
+static int
+yuy2_to_nv12(void* src, int src_stride_bytes,
+             void* dst[], int dst_stride_bytes[],
+             int width, int height)
+{
+    unsigned char* src8;
+    unsigned char* src81;
+    unsigned char* src82;
+    unsigned char* ydst8;
+    unsigned char* ydst81;
+    unsigned char* ydst82;
+    unsigned char* uvdst8;
+    unsigned char* uvdst81;
+    int index;
+    int indexd2;
+    int jndex;
+    int sum;
+    int y_stride_bytes;
+    int uv_stride_bytes;
+
+    src8 = (unsigned char*)src;
+    ydst8 = (unsigned char*)(dst[0]);
+    uvdst8 = (unsigned char*)(dst[1]);
+    y_stride_bytes = dst_stride_bytes[0];
+    uv_stride_bytes = dst_stride_bytes[1];
+    for (index = 0; index < height; index += 2)
+    {
+        indexd2 = index / 2;
+        src81 = src8 + (index * src_stride_bytes);
+        src82 = src81 + src_stride_bytes;
+        ydst81 = ydst8 + (index * y_stride_bytes);
+        ydst82 = ydst81 + y_stride_bytes;
+        uvdst81 = uvdst8 + (indexd2 * uv_stride_bytes);
+        for (jndex = 0; jndex < width; jndex += 2)
+        {
+            ydst81[0] = src81[1];
+            ydst81[1] = src81[3];
+            ydst82[0] = src82[1];
+            ydst82[1] = src82[3];
+            sum = src81[0] + src82[0];
+            uvdst81[0] = (sum + 1) / 2;
+            sum = src81[2] + src82[2];
+            uvdst81[1] = (sum + 1) / 2;
+            src81 += 4;
+            src82 += 4;
+            ydst81 += 2;
+            ydst82 += 2;
+            uvdst81 += 2;
+        }
+    }
+    return 0;
+}
+
+/*****************************************************************************/
+static int
+bmd_process_av(struct bmd_info* bmd)
+{
+    struct bmd_av_info* av_info;
+    struct stream* out_s;
+    int bytes;
+    char* nv12_data;
+    void* dst_data[2];
+    int dst_stride[2];
+    void* ydata;
+    void* uvdata;
+    int ydata_stride_bytes;
+    int uvdata_stride_bytes;
+    int index;
+    char* src8;
+    char* dst8;
+
+    LOGLN10((LOG_INFO, LOGS, LOGP));
+    av_info = bmd->av_info;
+    nv12_data = NULL;
+    out_s = NULL;
+    pthread_mutex_lock(&(av_info->av_mutex));
+    if (av_info->flags & 1)
+    {
+        LOGLN10((LOG_INFO, LOGS "got video", LOGP));
+        av_info->flags &= ~1;
+        bytes = av_info->vwidth * av_info->vheight * 2;
+        nv12_data = (char*)malloc(bytes);
+        dst_data[0] = nv12_data;
+        dst_data[1] = nv12_data + (av_info->vwidth * av_info->vheight);
+        dst_stride[0] = av_info->vwidth;
+        dst_stride[1] = av_info->vwidth;
+        yuy2_to_nv12(av_info->vdata, av_info->vwidth * 2,
+                     dst_data, dst_stride,
+                     av_info->vwidth, av_info->vheight);
+    }
+    if (av_info->flags & 2)
+    {
+        LOGLN10((LOG_INFO, LOGS "got audio", LOGP));
+        av_info->flags &= ~2;
+        bytes = av_info->achannels * av_info->abytes_per_sample *
+                av_info->asamples;
+        out_s = (struct stream*)calloc(1, sizeof(struct stream));
+        if (out_s != NULL)
+        {
+            out_s->size = bytes + 1024;
+            out_s->data = (char*)malloc(out_s->size);
+            if (out_s->data != NULL)
+            {
+                out_s->p = out_s->data;
+                out_uint32_le(out_s, BMD_PDU_CODE_AUDIO);
+                out_uint32_le(out_s, 24 + bytes);
+                out_uint32_le(out_s, 0); // ai->pts);
+                out_uint8s(out_s, 4);
+                out_uint32_le(out_s, 2);
+                out_uint32_le(out_s, bytes);
+                out_uint8p(out_s, av_info->adata, bytes);
+                out_s->end = out_s->p;
+                out_s->p = out_s->data;
+            }
+        }
+    }
+    pthread_mutex_unlock(&(av_info->av_mutex));
+    if (out_s != NULL)
+    {
+        if (out_s->data != NULL)
+        {
+            bmd_peer_queue_all_audio(bmd, out_s);
+            free(out_s->data);
+        }
+        free(out_s);
+    }
+    if (nv12_data != NULL)
+    {
+        if ((bmd->yami == NULL) ||
+            (bmd->yami_width != av_info->vwidth) ||
+            (bmd->yami_height != av_info->vheight))
+        {
+            yami_surface_delete(bmd->yami);
+            if (yami_surface_create(&(bmd->yami),
+                                    av_info->vwidth, av_info->vheight,
+                                    0, 0) != YI_SUCCESS)
+            {
+                LOGLN0((LOG_ERROR, LOGS "yami_surface_create failed", LOGP));
+                bmd->yami = NULL;
+                return 1;
+            }
+            bmd->video_frame_count = 0;
+        }
+        if (yami_surface_get_ybuffer(bmd->yami, &ydata,
+                                     &ydata_stride_bytes) != YI_SUCCESS)
+        {
+            LOGLN0((LOG_ERROR, LOGS "yami_surface_get_ybuffer failed", LOGP));
+            return 1;
+        }
+        src8 = nv12_data;
+        dst8 = ydata;
+        for (index = 0; index < av_info->vheight; index++)
+        {
+            memcpy(dst8, src8, av_info->vwidth);
+            src8 += av_info->vwidth;
+            dst8 += ydata_stride_bytes;
+        }
+        if (yami_surface_get_uvbuffer(bmd->yami, &uvdata,
+                                      &uvdata_stride_bytes) != YI_SUCCESS)
+        {
+            LOGLN0((LOG_ERROR, LOGS "yami_surface_get_uvbuffer failed", LOGP));
+            return 1;
+        }
+        src8 = nv12_data + av_info->vwidth * av_info->vheight;
+        dst8 = uvdata;
+        for (index = 0; index < av_info->vheight; index += 2)
+        {
+            memcpy(dst8, src8, av_info->vwidth);
+            src8 += av_info->vwidth;
+            dst8 += uvdata_stride_bytes;
+        }
+        free(nv12_data);
+        if (bmd->fd > 0)
+        {
+            close(bmd->fd);
+            bmd->fd = 0;
+        }
+        if (yami_surface_get_fd_dst(bmd->yami, &(bmd->fd),
+                                    &(bmd->fd_width),
+                                    &(bmd->fd_height),
+                                    &(bmd->fd_stride),
+                                    &(bmd->fd_size),
+                                    &(bmd->fd_bpp))!= YI_SUCCESS)
+        {
+            LOGLN0((LOG_ERROR, LOGS "yami_surface_get_fd_dst failed", LOGP));
+            return 1;
+        }
+        bmd->video_frame_count++;
+        bmd_peer_queue_all_video(bmd);
+    }
+    return BMD_ERROR_NONE;
+}
 
 /*****************************************************************************/
 static void
@@ -114,9 +311,15 @@ printf_help(int argc, char** argv)
 static int
 bmd_cleanup(struct bmd_info* bmd)
 {
+    if (bmd->declink != NULL)
+    {
+        bmd_declink_stop(bmd->declink);
+        bmd_declink_delete(bmd->declink);
+        bmd->declink = NULL;
+    }
     if (bmd->yami != NULL)
     {
-        //yami_decoder_delete(hdhrd->yami);
+        yami_surface_delete(bmd->yami);
         bmd->yami = NULL;
     }
     if (bmd->fd > 0)
@@ -131,6 +334,19 @@ bmd_cleanup(struct bmd_info* bmd)
 static int
 bmd_start(struct bmd_info* bmd, struct settings_info* settings)
 {
+    int error;
+
+    (void)settings;
+    error = bmd_declink_create(bmd, &(bmd->declink));
+    if (error != BMD_ERROR_NONE)
+    {
+        return error;
+    }
+    error = bmd_declink_start(bmd->declink);
+    if (error != BMD_ERROR_NONE)
+    {
+        return error;
+    }
     return BMD_ERROR_NONE;
 }
 
@@ -160,6 +376,7 @@ bmd_process_fds(struct bmd_info* bmd, struct settings_info* settings,
     struct timeval* ptime;
     socklen_t sock_len;
     struct sockaddr_un s;
+    char char4[4];
 
     rv = BMD_ERROR_NONE;
     for (;;)
@@ -169,10 +386,15 @@ bmd_process_fds(struct bmd_info* bmd, struct settings_info* settings,
         {
             max_fd = g_term_pipe[0];
         }
+        if (bmd->av_pipe[0] > max_fd)
+        {
+            max_fd = bmd->av_pipe[0];
+        }
         FD_ZERO(&rfds);
         FD_ZERO(&wfds);
         FD_SET(bmd->listener, &rfds);
         FD_SET(g_term_pipe[0], &rfds);
+        FD_SET(bmd->av_pipe[0], &rfds);
         if (bmd_peer_get_fds(bmd, &max_fd, &rfds, &wfds) != 0)
         {
             LOGLN0((LOG_ERROR, LOGS "bmd_peer_get_fds failed", LOGP));
@@ -206,6 +428,16 @@ bmd_process_fds(struct bmd_info* bmd, struct settings_info* settings,
                 LOGLN0((LOG_INFO, LOGS "g_term_pipe set", LOGP));
                 rv = BMD_ERROR_TERM;
                 break;
+            }
+            if (FD_ISSET(bmd->av_pipe[0], &rfds))
+            {
+                LOGLN10((LOG_INFO, LOGS "av_pipe set", LOGP));
+                if (read(bmd->av_pipe[0], char4, 4) != 4)
+                {
+                    LOGLN0((LOG_INFO, LOGS "read failed", LOGP));
+                    break;
+                }
+                bmd_process_av(bmd);
             }
             if (FD_ISSET(bmd->listener, &rfds))
             {
@@ -277,7 +509,7 @@ int
 main(int argc, char** argv)
 {
     struct bmd_info* bmd;
-    void* bmd_declink;
+    //void* bmd_declink;
     struct settings_info* settings;
     int error;
     int pid;
@@ -403,7 +635,18 @@ main(int argc, char** argv)
     if (error != 0)
     {
         LOGLN0((LOG_ERROR, LOGS "pipe failed", LOGP));
-        //close(bmd->listener);
+        close(bmd->listener);
+        free(settings);
+        free(bmd);
+        return 1;
+    }
+    error = pipe(bmd->av_pipe);
+    if (error != 0)
+    {
+        LOGLN0((LOG_ERROR, LOGS "pipe failed", LOGP));
+        close(g_term_pipe[0]);
+        close(g_term_pipe[1]);
+        close(bmd->listener);
         free(settings);
         free(bmd);
         return 1;
@@ -412,6 +655,18 @@ main(int argc, char** argv)
     signal(SIGTERM, sig_int);
     signal(SIGPIPE, sig_pipe);
 
+    for (;;)
+    {
+        error = bmd_process_fds(bmd, settings, -1);
+        if (error != BMD_ERROR_NONE)
+        {
+            LOGLN0((LOG_ERROR, LOGS "bmd_process_fds failed error %d",
+                    LOGP, error));
+            break;
+        }
+    }
+
+#if 0
     if (bmd_declink_create(bmd, &bmd_declink) == 0)
     {
         bmd_declink_start(bmd_declink);
@@ -419,12 +674,15 @@ main(int argc, char** argv)
         bmd_declink_stop(bmd_declink);
         bmd_declink_delete(bmd_declink);
     }
+#endif
 
     close(bmd->listener);
     unlink(settings->bmd_uds);
-
+    bmd_cleanup(bmd);
     yami_deinit();
     close(bmd->yami_fd);
+    close(bmd->av_pipe[0]);
+    close(bmd->av_pipe[1]);
     free(bmd);
     free(settings);
     close(g_term_pipe[0]);

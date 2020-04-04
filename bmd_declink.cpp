@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <pthread.h>
 
 #include <DeckLinkAPI.h>
@@ -130,24 +131,72 @@ HRESULT DeckLinkCaptureDelegate::
     int video_width;
     int video_height;
 
-    LOGLN0((LOG_INFO, LOGS, LOGP));
+    struct bmd_av_info* av_info;
+    int do_sig;
+    int bytes;
+
+    LOGLN10((LOG_INFO, LOGS "videoFrame %p audioFrame %p", LOGP,
+             videoFrame, audioFrame));
+
+    do_sig = 0;
+    av_info = m_bmd->av_info;
+    pthread_mutex_lock(&(av_info->av_mutex));
+
     if (videoFrame != NULL)
     {
         video_data = NULL;
         videoFrame->GetBytes(&video_data);
         video_width = videoFrame->GetWidth();
         video_height = videoFrame->GetHeight();
-        LOGLN0((LOG_INFO, LOGS "video_data %p video_width %d video_height %d",
-                LOGP, video_data, video_width, video_height));
+        LOGLN10((LOG_INFO, LOGS "video_data %p video_width %d video_height %d",
+                 LOGP, video_data, video_width, video_height));
+        bytes = video_width * video_height * 2;
+        if (bytes > av_info->vdata_alloc_bytes)
+        {
+            free(av_info->vdata);
+            av_info->vdata = (char*)malloc(bytes);
+            av_info->vdata_alloc_bytes = bytes;
+        }
+        av_info->vformat = 0;
+        av_info->vwidth = video_width;
+        av_info->vheight = video_height;
+        memcpy(av_info->vdata, video_data, bytes);
+        av_info->flags |= 1;
+        do_sig = 1;
     }
     if (audioFrame != NULL)
     {
         audio_data = NULL;
         audioFrame->GetBytes(&audio_data);
         audio_frame_count = audioFrame->GetSampleFrameCount();
-        LOGLN0((LOG_INFO, LOGS "audio_data %p audio_frame_count %d",
-                LOGP, audio_data, audio_frame_count));
+        LOGLN10((LOG_INFO, LOGS "audio_data %p audio_frame_count %d",
+                 LOGP, audio_data, audio_frame_count));
+        bytes = audio_frame_count * 2 * 2;
+        if (bytes > av_info->adata_alloc_bytes)
+        {
+            free(av_info->adata);
+            av_info->adata = (char*)malloc(bytes);
+            av_info->adata_alloc_bytes = bytes;
+        }
+        av_info->aformat = 0;
+        av_info->achannels = 2;
+        av_info->abytes_per_sample = 2;
+        av_info->asamples = audio_frame_count;
+        memcpy(av_info->adata, audio_data, bytes);
+        av_info->flags |= 2;
+        do_sig = 1;
     }
+
+    pthread_mutex_unlock(&(av_info->av_mutex));
+
+    if (do_sig)
+    {
+        if (write(m_bmd->av_pipe[1], "sig", 4) != 4)
+        {
+            LOGLN0((LOG_ERROR, LOGS "write failed", LOGP));
+        }
+    }
+
     return S_OK;
 }
 
@@ -298,6 +347,8 @@ bmd_declink_create(struct bmd_info* bmd, void** obj)
     }
     self = (struct bmd_declink*)calloc(1, sizeof(struct bmd_declink));
     self->deckLinkInput = deckLinkInput;
+    bmd->av_info = (struct bmd_av_info*)calloc(1, sizeof(struct bmd_av_info));
+    pthread_mutex_init(&(bmd->av_info->av_mutex), NULL);
     *obj = self;
     return BMD_ERROR_NONE;
 }
