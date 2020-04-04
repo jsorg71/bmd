@@ -23,7 +23,7 @@
 
 #define BMD_VERSION_MAJOR   0
 #define BMD_VERSION_MINOR   1
-#define BMD_AUDIO_LATENCY   100
+#define BMD_AUDIO_LATENCY   64
 
 #define BMD_PDU_CODE_SUBSCRIBE_AUDIO        1
 #define BMD_PDU_CODE_AUDIO                  2
