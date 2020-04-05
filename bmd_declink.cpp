@@ -55,6 +55,7 @@ class DeckLinkCaptureDelegate : public IDeckLinkInputCallback
 struct bmd_declink
 {
     IDeckLinkInput* deckLinkInput;
+    struct bmd_info* bmd;
 };
 
 /******************************************************************************/
@@ -347,6 +348,7 @@ bmd_declink_create(struct bmd_info* bmd, void** obj)
     }
     self = (struct bmd_declink*)calloc(1, sizeof(struct bmd_declink));
     self->deckLinkInput = deckLinkInput;
+    self->bmd = bmd;
     bmd->av_info = (struct bmd_av_info*)calloc(1, sizeof(struct bmd_av_info));
     pthread_mutex_init(&(bmd->av_info->av_mutex), NULL);
     *obj = self;
@@ -358,13 +360,29 @@ int
 bmd_declink_delete(void* obj)
 {
     struct bmd_declink* self;
+    struct bmd_info* bmd;
+    struct bmd_av_info* av_info;
 
     self = (struct bmd_declink*)obj;
-    if (self != NULL)
+    if (self == NULL)
     {
-        self->deckLinkInput->Release();
-        free(self);
+        return BMD_ERROR_NONE;
     }
+    self->deckLinkInput->Release();
+    bmd = self->bmd;
+    if (bmd != NULL)
+    {
+        av_info = bmd->av_info;
+        if (av_info != NULL)
+        {
+            free(av_info->vdata);
+            free(av_info->adata);
+            pthread_mutex_destroy(&(av_info->av_mutex));
+            free(av_info);
+            bmd->av_info = NULL;
+        }
+    }
+    free(self);
     return BMD_ERROR_NONE;
 }
 

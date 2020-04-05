@@ -126,6 +126,10 @@ bmd_process_av(struct bmd_info* bmd)
 
     LOGLN10((LOG_INFO, LOGS, LOGP));
     av_info = bmd->av_info;
+    if (av_info == NULL)
+    {
+        return BMD_ERROR_NONE;
+    }
     nv12_data = NULL;
     out_s = NULL;
     pthread_mutex_lock(&(av_info->av_mutex));
@@ -185,6 +189,8 @@ bmd_process_av(struct bmd_info* bmd)
             (bmd->yami_width != av_info->vwidth) ||
             (bmd->yami_height != av_info->vheight))
         {
+            LOGLN0((LOG_INFO, LOGS "yami_surface_create width %d height %d",
+                    LOGP, av_info->vwidth, av_info->vheight));
             yami_surface_delete(bmd->yami);
             if (yami_surface_create(&(bmd->yami),
                                     av_info->vwidth, av_info->vheight,
@@ -337,6 +343,8 @@ bmd_cleanup(struct bmd_info* bmd)
         yami_surface_delete(bmd->yami);
         bmd->yami = NULL;
     }
+    bmd->yami_width = 0;
+    bmd->yami_height = 0;
     if (bmd->fd > 0)
     {
         close(bmd->fd);
