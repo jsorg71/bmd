@@ -143,7 +143,7 @@ bmd_process_av(struct bmd_info* bmd)
         dst_data[1] = nv12_data + (av_info->vwidth * av_info->vheight);
         dst_stride[0] = av_info->vwidth;
         dst_stride[1] = av_info->vwidth;
-        yuy2_to_nv12(av_info->vdata, av_info->vwidth * 2,
+        yuy2_to_nv12(av_info->vdata, av_info->vstride_bytes,
                      dst_data, dst_stride,
                      av_info->vwidth, av_info->vheight);
     }
@@ -163,9 +163,9 @@ bmd_process_av(struct bmd_info* bmd)
                 out_s->p = out_s->data;
                 out_uint32_le(out_s, BMD_PDU_CODE_AUDIO);
                 out_uint32_le(out_s, 24 + bytes);
-                out_uint32_le(out_s, 0); // ai->pts);
+                out_uint32_le(out_s, av_info->atime);
                 out_uint8s(out_s, 4);
-                out_uint32_le(out_s, 2);
+                out_uint32_le(out_s, av_info->achannels);
                 out_uint32_le(out_s, bytes);
                 out_uint8p(out_s, av_info->adata, bytes);
                 out_s->end = out_s->p;
@@ -261,6 +261,7 @@ bmd_process_av(struct bmd_info* bmd)
             LOGLN0((LOG_ERROR, LOGS "yami_surface_get_fd_dst failed", LOGP));
             return 1;
         }
+        bmd->fd_time = av_info->vtime;
         bmd->video_frame_count++;
         bmd_peer_queue_all_video(bmd);
     }
@@ -332,11 +333,23 @@ printf_help(int argc, char** argv)
 static int
 bmd_cleanup(struct bmd_info* bmd)
 {
+    LOGLN0((LOG_INFO, LOGS, LOGP));
     if (bmd->declink != NULL)
     {
         bmd_declink_stop(bmd->declink);
         bmd_declink_delete(bmd->declink);
         bmd->declink = NULL;
+    }
+    if (bmd->av_info != NULL)
+    {
+        LOGLN0((LOG_INFO, LOGS "av_info cleanup", LOGP));
+        free(bmd->av_info->vdata);
+        free(bmd->av_info->adata);
+        pthread_mutex_destroy(&(bmd->av_info->av_mutex));
+        close(bmd->av_info->av_pipe[0]);
+        close(bmd->av_info->av_pipe[1]);
+        free(bmd->av_info);
+        bmd->av_info = NULL;
     }
     if (bmd->yami != NULL)
     {
@@ -360,7 +373,11 @@ bmd_start(struct bmd_info* bmd, struct settings_info* settings)
     int error;
 
     (void)settings;
-    error = bmd_declink_create(bmd, &(bmd->declink));
+    LOGLN0((LOG_INFO, LOGS, LOGP));
+    bmd->av_info = (struct bmd_av_info*)calloc(1, sizeof(struct bmd_av_info));
+    pthread_mutex_init(&(bmd->av_info->av_mutex), NULL);
+    pipe(bmd->av_info->av_pipe);
+    error = bmd_declink_create(bmd->av_info, &(bmd->declink));
     if (error != BMD_ERROR_NONE)
     {
         return error;
@@ -377,8 +394,8 @@ bmd_start(struct bmd_info* bmd, struct settings_info* settings)
 static int
 bmd_stop(struct bmd_info* bmd)
 {
+    LOGLN0((LOG_INFO, LOGS, LOGP));
     bmd_cleanup(bmd);
-    LOGLN0((LOG_INFO, LOGS "bmd_cleanup called", LOGP));
     return BMD_ERROR_NONE;
 }
 
@@ -409,15 +426,21 @@ bmd_process_fds(struct bmd_info* bmd, struct settings_info* settings,
         {
             max_fd = g_term_pipe[0];
         }
-        if (bmd->av_pipe[0] > max_fd)
+        if (bmd->av_info != NULL)
         {
-            max_fd = bmd->av_pipe[0];
+            if (bmd->av_info->av_pipe[0] > max_fd)
+            {
+                max_fd = bmd->av_info->av_pipe[0];
+            }
         }
         FD_ZERO(&rfds);
         FD_ZERO(&wfds);
         FD_SET(bmd->listener, &rfds);
         FD_SET(g_term_pipe[0], &rfds);
-        FD_SET(bmd->av_pipe[0], &rfds);
+        if (bmd->av_info != NULL)
+        {
+            FD_SET(bmd->av_info->av_pipe[0], &rfds);
+        }
         if (bmd_peer_get_fds(bmd, &max_fd, &rfds, &wfds) != 0)
         {
             LOGLN0((LOG_ERROR, LOGS "bmd_peer_get_fds failed", LOGP));
@@ -452,15 +475,18 @@ bmd_process_fds(struct bmd_info* bmd, struct settings_info* settings,
                 rv = BMD_ERROR_TERM;
                 break;
             }
-            if (FD_ISSET(bmd->av_pipe[0], &rfds))
+            if (bmd->av_info != NULL)
             {
-                LOGLN10((LOG_INFO, LOGS "av_pipe set", LOGP));
-                if (read(bmd->av_pipe[0], char4, 4) != 4)
+                if (FD_ISSET(bmd->av_info->av_pipe[0], &rfds))
                 {
-                    LOGLN0((LOG_INFO, LOGS "read failed", LOGP));
-                    break;
+                    LOGLN10((LOG_INFO, LOGS "av_pipe set", LOGP));
+                    if (read(bmd->av_info->av_pipe[0], char4, 4) != 4)
+                    {
+                        LOGLN0((LOG_INFO, LOGS "read failed", LOGP));
+                        break;
+                    }
+                    bmd_process_av(bmd);
                 }
-                bmd_process_av(bmd);
             }
             if (FD_ISSET(bmd->listener, &rfds))
             {
@@ -663,17 +689,7 @@ main(int argc, char** argv)
         free(bmd);
         return 1;
     }
-    error = pipe(bmd->av_pipe);
-    if (error != 0)
-    {
-        LOGLN0((LOG_ERROR, LOGS "pipe failed", LOGP));
-        close(g_term_pipe[0]);
-        close(g_term_pipe[1]);
-        close(bmd->listener);
-        free(settings);
-        free(bmd);
-        return 1;
-    }
+
     signal(SIGINT, sig_int);
     signal(SIGTERM, sig_int);
     signal(SIGPIPE, sig_pipe);
@@ -689,23 +705,11 @@ main(int argc, char** argv)
         }
     }
 
-#if 0
-    if (bmd_declink_create(bmd, &bmd_declink) == 0)
-    {
-        bmd_declink_start(bmd_declink);
-        usleep(3 * 1024 * 1024);
-        bmd_declink_stop(bmd_declink);
-        bmd_declink_delete(bmd_declink);
-    }
-#endif
-
     close(bmd->listener);
     unlink(settings->bmd_uds);
     bmd_cleanup(bmd);
     yami_deinit();
     close(bmd->yami_fd);
-    close(bmd->av_pipe[0]);
-    close(bmd->av_pipe[1]);
     free(bmd);
     free(settings);
     close(g_term_pipe[0]);

@@ -28,6 +28,7 @@
 #include "bmd_declink.h"
 #include "bmd_error.h"
 #include "bmd_log.h"
+#include "bmd_utils.h"
 
 class DeckLinkCaptureDelegate : public IDeckLinkInputCallback
 {
@@ -49,13 +50,12 @@ class DeckLinkCaptureDelegate : public IDeckLinkInputCallback
         ULONG m_refCount;
         pthread_mutex_t m_mutex;
     public:
-        struct bmd_info* m_bmd;
+        struct bmd_av_info* m_av_info;
 };
 
 struct bmd_declink
 {
     IDeckLinkInput* deckLinkInput;
-    struct bmd_info* bmd;
 };
 
 /******************************************************************************/
@@ -131,27 +131,33 @@ HRESULT DeckLinkCaptureDelegate::
     void* video_data;
     int video_width;
     int video_height;
+    int stride_bytes;
 
     struct bmd_av_info* av_info;
     int do_sig;
     int bytes;
+    int now;
 
     LOGLN10((LOG_INFO, LOGS "videoFrame %p audioFrame %p", LOGP,
              videoFrame, audioFrame));
 
+    get_mstime(&now);
+
     do_sig = 0;
-    av_info = m_bmd->av_info;
+    av_info = m_av_info;
     pthread_mutex_lock(&(av_info->av_mutex));
 
-    if (videoFrame != NULL)
+    if ((videoFrame != NULL) && ((av_info->flags & 1) == 0))
     {
         video_data = NULL;
         videoFrame->GetBytes(&video_data);
         video_width = videoFrame->GetWidth();
         video_height = videoFrame->GetHeight();
-        LOGLN10((LOG_INFO, LOGS "video_data %p video_width %d video_height %d",
-                 LOGP, video_data, video_width, video_height));
-        bytes = video_width * video_height * 2;
+        stride_bytes = videoFrame->GetRowBytes();
+        LOGLN10((LOG_INFO, LOGS "video_data %p video_width %d video_height %d "
+                 "stride_bytes %d", LOGP, video_data,
+                 video_width, video_height, stride_bytes));
+        bytes = stride_bytes * video_height;
         if (bytes > av_info->vdata_alloc_bytes)
         {
             free(av_info->vdata);
@@ -161,11 +167,13 @@ HRESULT DeckLinkCaptureDelegate::
         av_info->vformat = 0;
         av_info->vwidth = video_width;
         av_info->vheight = video_height;
+        av_info->vstride_bytes = stride_bytes;
+        av_info->vtime = now;
         memcpy(av_info->vdata, video_data, bytes);
         av_info->flags |= 1;
         do_sig = 1;
     }
-    if (audioFrame != NULL)
+    if ((audioFrame != NULL) && ((av_info->flags & 2) == 0))
     {
         audio_data = NULL;
         audioFrame->GetBytes(&audio_data);
@@ -183,6 +191,7 @@ HRESULT DeckLinkCaptureDelegate::
         av_info->achannels = 2;
         av_info->abytes_per_sample = 2;
         av_info->asamples = audio_frame_count;
+        av_info->atime = now;
         memcpy(av_info->adata, audio_data, bytes);
         av_info->flags |= 2;
         do_sig = 1;
@@ -192,7 +201,7 @@ HRESULT DeckLinkCaptureDelegate::
 
     if (do_sig)
     {
-        if (write(m_bmd->av_pipe[1], "sig", 4) != 4)
+        if (write(av_info->av_pipe[1], "sig", 4) != 4)
         {
             LOGLN0((LOG_ERROR, LOGS "write failed", LOGP));
         }
@@ -274,7 +283,7 @@ bmd_declink_get_IDeckLinkDisplayMode(IDeckLinkInput* deckLinkInput)
 
 /******************************************************************************/
 int
-bmd_declink_create(struct bmd_info* bmd, void** obj)
+bmd_declink_create(struct bmd_av_info* av_info, void** obj)
 {
     HRESULT result;
     struct bmd_declink* self;
@@ -327,7 +336,7 @@ bmd_declink_create(struct bmd_info* bmd, void** obj)
     dmode = displayMode->GetDisplayMode();
     displayMode->Release();
     myDelegate = new DeckLinkCaptureDelegate();
-    myDelegate->m_bmd = bmd;
+    myDelegate->m_av_info = av_info;
     deckLinkInput->SetCallback(myDelegate);
     result = deckLinkInput->EnableVideoInput(dmode, bmdFormat8BitYUV,
                                              bmdVideoInputFlagDefault);
@@ -348,9 +357,6 @@ bmd_declink_create(struct bmd_info* bmd, void** obj)
     }
     self = (struct bmd_declink*)calloc(1, sizeof(struct bmd_declink));
     self->deckLinkInput = deckLinkInput;
-    self->bmd = bmd;
-    bmd->av_info = (struct bmd_av_info*)calloc(1, sizeof(struct bmd_av_info));
-    pthread_mutex_init(&(bmd->av_info->av_mutex), NULL);
     *obj = self;
     return BMD_ERROR_NONE;
 }
@@ -360,8 +366,6 @@ int
 bmd_declink_delete(void* obj)
 {
     struct bmd_declink* self;
-    struct bmd_info* bmd;
-    struct bmd_av_info* av_info;
 
     self = (struct bmd_declink*)obj;
     if (self == NULL)
@@ -369,19 +373,6 @@ bmd_declink_delete(void* obj)
         return BMD_ERROR_NONE;
     }
     self->deckLinkInput->Release();
-    bmd = self->bmd;
-    if (bmd != NULL)
-    {
-        av_info = bmd->av_info;
-        if (av_info != NULL)
-        {
-            free(av_info->vdata);
-            free(av_info->adata);
-            pthread_mutex_destroy(&(av_info->av_mutex));
-            free(av_info);
-            bmd->av_info = NULL;
-        }
-    }
     free(self);
     return BMD_ERROR_NONE;
 }

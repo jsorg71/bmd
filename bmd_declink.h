@@ -25,16 +25,19 @@ struct bmd_av_info
     int vformat;
     int vwidth;
     int vheight;
+    int vstride_bytes;
+    int vtime;
     char* vdata;
     int vdata_alloc_bytes;
     int aformat;
     int achannels;
     int abytes_per_sample;
     int asamples;
-    int pad0;
+    int atime;
     char* adata;
     int adata_alloc_bytes;
-    int pad1;
+    int pad0;
+    int av_pipe[2];
     pthread_mutex_t av_mutex;
 };
 
@@ -44,7 +47,7 @@ extern "C"
 #endif
 
 int
-bmd_declink_create(struct bmd_info* bmd, void** obj);
+bmd_declink_create(struct bmd_av_info* av_info, void** obj);
 int
 bmd_declink_delete(void* obj);
 int

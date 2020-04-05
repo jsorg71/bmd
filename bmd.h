@@ -39,7 +39,6 @@ struct bmd_info
     int yami_height;
     void* yami;
     void* declink;
-    int av_pipe[2];
     struct bmd_av_info* av_info;
     struct peer_info* peer_head;
     struct peer_info* peer_tail;

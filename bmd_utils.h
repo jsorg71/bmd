@@ -19,9 +19,18 @@
 #ifndef _BMD_UTILS_H_
 #define _BMD_UTILS_H_
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
 int
 get_mstime(int* mstime);
 int
 hex_dump(const void* data, int bytes);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif
