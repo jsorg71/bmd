@@ -23,6 +23,7 @@
 #include <pthread.h>
 
 #include <DeckLinkAPI.h>
+#include <DeckLinkAPIVersion.h>
 
 #include "bmd.h"
 #include "bmd_declink.h"
@@ -74,7 +75,8 @@ DeckLinkCaptureDelegate::~DeckLinkCaptureDelegate(void)
 }
 
 /******************************************************************************/
-HRESULT DeckLinkCaptureDelegate::QueryInterface(REFIID iid, LPVOID* ppv)
+HRESULT
+DeckLinkCaptureDelegate::QueryInterface(REFIID iid, LPVOID* ppv)
 {
     (void)iid;
     (void)ppv;
@@ -83,7 +85,8 @@ HRESULT DeckLinkCaptureDelegate::QueryInterface(REFIID iid, LPVOID* ppv)
 }
 
 /******************************************************************************/
-ULONG DeckLinkCaptureDelegate::AddRef(void)
+ULONG
+DeckLinkCaptureDelegate::AddRef(void)
 {
     LOGLN0((LOG_INFO, LOGS, LOGP));
     pthread_mutex_lock(&m_mutex);
@@ -93,7 +96,8 @@ ULONG DeckLinkCaptureDelegate::AddRef(void)
 }
 
 /******************************************************************************/
-ULONG DeckLinkCaptureDelegate::Release(void)
+ULONG
+DeckLinkCaptureDelegate::Release(void)
 {
     LOGLN0((LOG_INFO, LOGS, LOGP));
     pthread_mutex_lock(&m_mutex);
@@ -108,7 +112,8 @@ ULONG DeckLinkCaptureDelegate::Release(void)
 }
 
 /******************************************************************************/
-HRESULT DeckLinkCaptureDelegate::
+HRESULT
+DeckLinkCaptureDelegate::
     VideoInputFormatChanged(BMDVideoInputFormatChangedEvents events,
                             IDeckLinkDisplayMode* mode,
                             BMDDetectedVideoInputFormatFlags flags)
@@ -121,18 +126,17 @@ HRESULT DeckLinkCaptureDelegate::
 }
 
 /******************************************************************************/
-HRESULT DeckLinkCaptureDelegate::
+HRESULT
+DeckLinkCaptureDelegate::
     VideoInputFrameArrived(IDeckLinkVideoInputFrame* videoFrame,
                            IDeckLinkAudioInputPacket* audioFrame)
 {
     void* audio_data;
     long audio_frame_count;
-
     void* video_data;
     int video_width;
     int video_height;
     int stride_bytes;
-
     struct bmd_av_info* av_info;
     int do_sig;
     int bytes;
@@ -140,13 +144,13 @@ HRESULT DeckLinkCaptureDelegate::
 
     LOGLN10((LOG_INFO, LOGS "videoFrame %p audioFrame %p", LOGP,
              videoFrame, audioFrame));
-
-    get_mstime(&now);
-
+    if (get_mstime(&now) != BMD_ERROR_NONE)
+    {
+        return S_OK;
+    }
     do_sig = 0;
     av_info = m_av_info;
     pthread_mutex_lock(&(av_info->av_mutex));
-
     if ((videoFrame != NULL) && ((av_info->flags & 1) == 0))
     {
         video_data = NULL;
@@ -196,9 +200,7 @@ HRESULT DeckLinkCaptureDelegate::
         av_info->flags |= 2;
         do_sig = 1;
     }
-
     pthread_mutex_unlock(&(av_info->av_mutex));
-
     if (do_sig)
     {
         if (write(av_info->av_pipe[1], "sig", 4) != 4)
@@ -206,7 +208,6 @@ HRESULT DeckLinkCaptureDelegate::
             LOGLN0((LOG_ERROR, LOGS "write failed", LOGP));
         }
     }
-
     return S_OK;
 }
 
@@ -295,7 +296,35 @@ bmd_declink_create(struct bmd_av_info* av_info, void** obj)
     DeckLinkCaptureDelegate* myDelegate;
     IDeckLinkIterator* deckLinkIterator;
     IDeckLinkInput* deckLinkInput;
+    int64_t version;
+    IDeckLinkAPIInformation* deckLinkAPIInfo;
 
+    deckLinkAPIInfo = CreateDeckLinkAPIInformationInstance();
+    if (deckLinkAPIInfo != NULL)
+    {
+        result = deckLinkAPIInfo->GetInt(BMDDeckLinkAPIVersion, &version);
+        if (SUCCEEDED(result))
+        {
+            LOGLN0((LOG_INFO, LOGS "compile time version %d.%d.%d "
+                    "run time version %d.%d.%d", LOGP,
+                    (BLACKMAGIC_DECKLINK_API_VERSION >> 24) & 0xFF,
+                    (BLACKMAGIC_DECKLINK_API_VERSION >> 16) & 0xFF,
+                    (BLACKMAGIC_DECKLINK_API_VERSION >> 8) & 0xFF,
+                    (version >> 24) & 0xFF,
+                    (version >> 16) & 0xFF,
+                    (version >> 8) & 0xFF));
+        }
+        else
+        {
+            LOGLN0((LOG_ERROR, LOGS "BMDDeckLinkAPIVersion failed", LOGP));
+        }
+        deckLinkAPIInfo->Release();
+    }
+    else
+    {
+        LOGLN0((LOG_ERROR, LOGS "CreateDeckLinkAPIInformationInstance "
+                "failed", LOGP));
+    }
     deckLinkIterator = CreateDeckLinkIteratorInstance();
     if (deckLinkIterator == NULL)
     {

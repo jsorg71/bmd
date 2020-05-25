@@ -1,6 +1,7 @@
 
 YAMIPATH=/opt/yami
-BMSDKINCPATH=/home/jay/bbsdk10.9.9/Linux/include
+#BMSDKINCPATH=/home/jay/bbsdk10.9.9/Linux/include
+BMSDKINCPATH=/home/jay/bbsdk11.5.1/Linux/include
 
 OBJS=bmd.o bmd_declink.o DeckLinkAPIDispatch.o bmd_utils.o bmd_log.o bmd_peer.o
 

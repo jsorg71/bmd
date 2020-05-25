@@ -139,13 +139,16 @@ bmd_process_av(struct bmd_info* bmd)
         av_info->flags &= ~1;
         bytes = av_info->vwidth * av_info->vheight * 2;
         nv12_data = (char*)malloc(bytes);
-        dst_data[0] = nv12_data;
-        dst_data[1] = nv12_data + (av_info->vwidth * av_info->vheight);
-        dst_stride[0] = av_info->vwidth;
-        dst_stride[1] = av_info->vwidth;
-        yuy2_to_nv12(av_info->vdata, av_info->vstride_bytes,
-                     dst_data, dst_stride,
-                     av_info->vwidth, av_info->vheight);
+        if (nv12_data != NULL)
+        {
+            dst_data[0] = nv12_data;
+            dst_data[1] = nv12_data + (av_info->vwidth * av_info->vheight);
+            dst_stride[0] = av_info->vwidth;
+            dst_stride[1] = av_info->vwidth;
+            yuy2_to_nv12(av_info->vdata, av_info->vstride_bytes,
+                         dst_data, dst_stride,
+                         av_info->vwidth, av_info->vheight);
+        }
     }
     if (av_info->flags & 2)
     {
