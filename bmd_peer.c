@@ -352,7 +352,7 @@ bmd_peer_send_fd(int sck, int fd)
     fds = (int *) CMSG_DATA(cmsg);
     *fds = fd;
     size = sendmsg(sck, &msg, 0);
-    LOGLN10((LOG_INFO, LOGS "size %d", LOGP, size));
+    LOGLN10((LOG_INFO, LOGS "size %d", LOGP, (int)size));
     if (size != 4)
     {
         return BMD_ERROR_FD;

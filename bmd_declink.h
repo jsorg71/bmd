@@ -19,14 +19,19 @@
 #ifndef _BMD_DECLINK_H_
 #define _BMD_DECLINK_H_
 
+#define BMD_FLAGS_VIDEO_PRESENT 1
+#define BMD_FLAGS_AUDIO_PRESENT 2
+
 struct bmd_av_info
 {
-    int flags;
+    int got_video; /* boolean */
+    int got_audio; /* boolean */
     int vformat;
     int vwidth;
     int vheight;
     int vstride_bytes;
     int vtime;
+    int pad0;
     char* vdata;
     int vdata_alloc_bytes;
     int aformat;
@@ -36,7 +41,7 @@ struct bmd_av_info
     int atime;
     char* adata;
     int adata_alloc_bytes;
-    int pad0;
+    int pad1;
     int av_pipe[2];
     pthread_mutex_t av_mutex;
 };

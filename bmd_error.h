@@ -35,6 +35,8 @@
 #define BMD_ERROR_LOG               13
 #define BMD_ERROR_TERM              14
 #define BMD_ERROR_NOT_SUPPORTED     15
+#define BMD_ERROR_STOP              16
+#define BMD_ERROR_DECKLINK          17
 
 #endif
 

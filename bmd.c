@@ -133,10 +133,10 @@ bmd_process_av(struct bmd_info* bmd)
     nv12_data = NULL;
     out_s = NULL;
     pthread_mutex_lock(&(av_info->av_mutex));
-    if (av_info->flags & 1)
+    if (av_info->got_video)
     {
         LOGLN10((LOG_INFO, LOGS "got video", LOGP));
-        av_info->flags &= ~1;
+        av_info->got_video = 0;
         bytes = av_info->vwidth * av_info->vheight * 2;
         nv12_data = (char*)malloc(bytes);
         if (nv12_data != NULL)
@@ -150,10 +150,10 @@ bmd_process_av(struct bmd_info* bmd)
                          av_info->vwidth, av_info->vheight);
         }
     }
-    if (av_info->flags & 2)
+    if (av_info->got_audio)
     {
         LOGLN10((LOG_INFO, LOGS "got audio", LOGP));
-        av_info->flags &= ~2;
+        av_info->got_audio = 0;
         bytes = av_info->achannels * av_info->abytes_per_sample *
                 av_info->asamples;
         out_s = (struct stream*)calloc(1, sizeof(struct stream));

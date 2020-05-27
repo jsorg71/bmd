@@ -21,6 +21,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <stdint.h>
 
 #include <DeckLinkAPI.h>
 #include <DeckLinkAPIVersion.h>
@@ -151,7 +152,7 @@ DeckLinkCaptureDelegate::
     do_sig = 0;
     av_info = m_av_info;
     pthread_mutex_lock(&(av_info->av_mutex));
-    if ((videoFrame != NULL) && ((av_info->flags & 1) == 0))
+    if ((videoFrame != NULL) && (!(av_info->got_video)))
     {
         video_data = NULL;
         videoFrame->GetBytes(&video_data);
@@ -174,16 +175,16 @@ DeckLinkCaptureDelegate::
         av_info->vstride_bytes = stride_bytes;
         av_info->vtime = now;
         memcpy(av_info->vdata, video_data, bytes);
-        av_info->flags |= 1;
+        av_info->got_video = 1;
         do_sig = 1;
     }
-    if ((audioFrame != NULL) && ((av_info->flags & 2) == 0))
+    if ((audioFrame != NULL) && (!(av_info->got_audio)))
     {
         audio_data = NULL;
         audioFrame->GetBytes(&audio_data);
         audio_frame_count = audioFrame->GetSampleFrameCount();
         LOGLN10((LOG_INFO, LOGS "audio_data %p audio_frame_count %d",
-                 LOGP, audio_data, audio_frame_count));
+                 LOGP, audio_data, (int)audio_frame_count));
         bytes = audio_frame_count * 2 * 2;
         if (bytes > av_info->adata_alloc_bytes)
         {
@@ -197,7 +198,7 @@ DeckLinkCaptureDelegate::
         av_info->asamples = audio_frame_count;
         av_info->atime = now;
         memcpy(av_info->adata, audio_data, bytes);
-        av_info->flags |= 2;
+        av_info->got_audio = 1;
         do_sig = 1;
     }
     pthread_mutex_unlock(&(av_info->av_mutex));
@@ -219,7 +220,7 @@ bmd_declink_get_IDeckLink(IDeckLinkIterator* deckLinkIterator)
 
     for (;;)
     {
-        if (deckLinkIterator->Next(&deckLink) != S_OK)
+        if (FAILED(deckLinkIterator->Next(&deckLink)))
         {
             break;
         }
@@ -239,7 +240,7 @@ bmd_declink_get_IDeckLinkInput(IDeckLink* deckLink)
     HRESULT result;
 
     result = deckLink->QueryInterface(IID_IDeckLinkInput, &rv);
-    if (result == S_OK)
+    if (SUCCEEDED(result))
     {
         return (IDeckLinkInput*)rv;
     }
@@ -254,17 +255,17 @@ bmd_declink_get_IDeckLinkDisplayMode(IDeckLinkInput* deckLinkInput)
     IDeckLinkDisplayMode* displayMode;
     const char* displayModeName;
 
-    if (deckLinkInput->GetDisplayModeIterator(&displayModeIterator) != S_OK)
+    if (FAILED(deckLinkInput->GetDisplayModeIterator(&displayModeIterator)))
     {
         return NULL;
     }
     for (;;)
     {
-        if (displayModeIterator->Next(&displayMode) != S_OK)
+        if (FAILED(displayModeIterator->Next(&displayMode)))
         {
             break;
         }
-        if (displayMode->GetName(&displayModeName) != S_OK)
+        if (FAILED(displayMode->GetName(&displayModeName)))
         {
             displayMode->Release();
             break;
@@ -296,23 +297,27 @@ bmd_declink_create(struct bmd_av_info* av_info, void** obj)
     DeckLinkCaptureDelegate* myDelegate;
     IDeckLinkIterator* deckLinkIterator;
     IDeckLinkInput* deckLinkInput;
-    int64_t version;
+    int ctversion;
+    int rtversion;
+    int64_t i64;
     IDeckLinkAPIInformation* deckLinkAPIInfo;
 
     deckLinkAPIInfo = CreateDeckLinkAPIInformationInstance();
     if (deckLinkAPIInfo != NULL)
     {
-        result = deckLinkAPIInfo->GetInt(BMDDeckLinkAPIVersion, &version);
+        result = deckLinkAPIInfo->GetInt(BMDDeckLinkAPIVersion, &i64);
         if (SUCCEEDED(result))
         {
+            ctversion = BLACKMAGIC_DECKLINK_API_VERSION;
+            rtversion = (int)i64;
             LOGLN0((LOG_INFO, LOGS "compile time version %d.%d.%d "
                     "run time version %d.%d.%d", LOGP,
-                    (BLACKMAGIC_DECKLINK_API_VERSION >> 24) & 0xFF,
-                    (BLACKMAGIC_DECKLINK_API_VERSION >> 16) & 0xFF,
-                    (BLACKMAGIC_DECKLINK_API_VERSION >> 8) & 0xFF,
-                    (version >> 24) & 0xFF,
-                    (version >> 16) & 0xFF,
-                    (version >> 8) & 0xFF));
+                    (ctversion >> 24) & 0xFF,
+                    (ctversion >> 16) & 0xFF,
+                    (ctversion >> 8) & 0xFF,
+                    (rtversion >> 24) & 0xFF,
+                    (rtversion >> 16) & 0xFF,
+                    (rtversion >> 8) & 0xFF));
         }
         else
         {
@@ -330,14 +335,14 @@ bmd_declink_create(struct bmd_av_info* av_info, void** obj)
     {
         LOGLN0((LOG_ERROR, LOGS "CreateDeckLinkIteratorInstance failed",
                 LOGP));
-        return 1;
+        return BMD_ERROR_DECKLINK;
     }
     deckLink = bmd_declink_get_IDeckLink(deckLinkIterator);
     deckLinkIterator->Release();
     if (deckLink == NULL)
     {
         LOGLN0((LOG_ERROR, LOGS "bmd_declink_get_IDeckLink failed", LOGP));
-        return 1;
+        return BMD_ERROR_DECKLINK;
     }
     deckLink->GetModelName(&modelName);
     deckLink->GetDisplayName(&displayName);
@@ -351,7 +356,7 @@ bmd_declink_create(struct bmd_av_info* av_info, void** obj)
     {
         LOGLN0((LOG_ERROR, LOGS "bmd_declink_get_IDeckLinkInput failed",
                 LOGP));
-        return 1;
+        return BMD_ERROR_DECKLINK;
     }
     displayMode = bmd_declink_get_IDeckLinkDisplayMode(deckLinkInput);
     if (displayMode == NULL)
@@ -359,7 +364,7 @@ bmd_declink_create(struct bmd_av_info* av_info, void** obj)
         LOGLN0((LOG_ERROR, LOGS "bmd_declink_get_IDeckLinkDisplayMode failed",
                 LOGP));
         deckLinkInput->Release();
-        return 1;
+        return BMD_ERROR_DECKLINK;
 
     }
     dmode = displayMode->GetDisplayMode();
@@ -369,22 +374,29 @@ bmd_declink_create(struct bmd_av_info* av_info, void** obj)
     deckLinkInput->SetCallback(myDelegate);
     result = deckLinkInput->EnableVideoInput(dmode, bmdFormat8BitYUV,
                                              bmdVideoInputFlagDefault);
-    if (result != S_OK)
-    { 
-        LOGLN0((LOG_ERROR, LOGS "EnableVideoInput failed", LOGP));
+    if (FAILED(result))
+    {
+        LOGLN0((LOG_ERROR, LOGS "EnableVideoInput failed result 0x%x",
+                LOGP, result));
         deckLinkInput->Release();
-        return 1;
+        return BMD_ERROR_DECKLINK;
     }
     result = deckLinkInput->EnableAudioInput(bmdAudioSampleRate48kHz,
                                              bmdAudioSampleType16bitInteger,
                                              2);
-    if (result != S_OK)
+    if (FAILED(result))
     {
-        LOGLN0((LOG_ERROR, LOGS "EnableAudioInput failed", LOGP));
+        LOGLN0((LOG_ERROR, LOGS "EnableAudioInput failed result 0x%8.8x",
+                LOGP, result));
         deckLinkInput->Release();
-        return 1;
+        return BMD_ERROR_DECKLINK;
     }
     self = (struct bmd_declink*)calloc(1, sizeof(struct bmd_declink));
+    if (self == NULL)
+    {
+        deckLinkInput->Release();
+        return BMD_ERROR_MEMORY;
+    }
     self->deckLinkInput = deckLinkInput;
     *obj = self;
     return BMD_ERROR_NONE;
@@ -416,9 +428,9 @@ bmd_declink_start(void* obj)
     LOGLN0((LOG_INFO, LOGS, LOGP));
     self = (struct bmd_declink*)obj;
     result = self->deckLinkInput->StartStreams();
-    if (result != S_OK)
+    if (FAILED(result))
     {
-        return 1;
+        return BMD_ERROR_START;
     }
     return BMD_ERROR_NONE;
 }
@@ -433,9 +445,9 @@ bmd_declink_stop(void* obj)
     LOGLN0((LOG_INFO, LOGS, LOGP));
     self = (struct bmd_declink*)obj;
     result = self->deckLinkInput->StopStreams();
-    if (result != S_OK)
+    if (FAILED(result))
     {
-        return 1;
+        return BMD_ERROR_STOP;
     }
     return BMD_ERROR_NONE;
 }

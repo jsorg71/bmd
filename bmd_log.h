@@ -53,12 +53,18 @@ extern "C"
 {
 #endif
 
+#ifdef __GNUC__
+#define PRINTFLIKE(_n, _m) __attribute__((format(printf, _n, _m)))
+#else
+#define PRINTFLIKE(_n, _m)
+#endif
+
 int
 log_init(int flags, int log_level, const char* filename);
 int
 log_deinit(void);
 int
-logln(int log_level, const char* format, ...);
+logln(int log_level, const char* format, ...) PRINTFLIKE(2, 3);
 
 #ifdef __cplusplus
 }
