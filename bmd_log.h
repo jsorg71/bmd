@@ -48,15 +48,15 @@
 #define LOGLN10(_args)
 #endif
 
-#ifdef __cplusplus
-extern "C"
-{
-#endif
-
 #ifdef __GNUC__
 #define PRINTFLIKE(_n, _m) __attribute__((format(printf, _n, _m)))
 #else
 #define PRINTFLIKE(_n, _m)
+#endif
+
+#ifdef __cplusplus
+extern "C"
+{
 #endif
 
 int

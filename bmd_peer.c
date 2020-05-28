@@ -37,9 +37,9 @@
 struct peer_info
 {
     int sck;
-    int flags;
+    int got_subscribe_audio; /* boolean */
+    int got_request_video; /* boolean */
     int video_frame_count;
-    int pad0;
     struct stream* out_s_head;
     struct stream* out_s_tail;
     struct stream* in_s;
@@ -195,7 +195,7 @@ bmd_peer_process_msg_request_video_frame(struct bmd_info* bmd,
 
     (void)in_s;
 
-    if (peer->flags & BMD_PEER_REQUEST_VIDEO)
+    if (peer->got_request_video)
     {
         LOGLN10((LOG_INFO, LOGS "already requested", LOGP));
         return BMD_ERROR_NONE;
@@ -204,7 +204,7 @@ bmd_peer_process_msg_request_video_frame(struct bmd_info* bmd,
         (peer->video_frame_count == bmd->video_frame_count))
     {
         LOGLN10((LOG_INFO, LOGS "set to get next frame", LOGP));
-        peer->flags |= BMD_PEER_REQUEST_VIDEO;
+        peer->got_request_video = 1;
         return BMD_ERROR_NONE;
     }
     LOGLN10((LOG_INFO, LOGS "sending frame now", LOGP));
@@ -225,11 +225,11 @@ bmd_peer_process_msg_subscribe_audio(struct bmd_info* bmd,
     in_uint8(in_s, val8);
     if (val8)
     {
-        peer->flags |= BMD_PEER_SUBSCRIBE_AUDIO;
+        peer->got_subscribe_audio = 1;
     }
     else
     {
-        peer->flags &= ~BMD_PEER_SUBSCRIBE_AUDIO;
+        peer->got_subscribe_audio = 0;
     }
     return BMD_ERROR_NONE;
 }
@@ -630,10 +630,10 @@ bmd_peer_queue_all_video(struct bmd_info* bmd)
     peer = bmd->peer_head;
     while (peer != NULL)
     {
-        if (peer->flags & BMD_PEER_REQUEST_VIDEO)
+        if (peer->got_request_video)
         {
             bmd_peer_queue_frame(bmd, peer);
-            peer->flags &= ~BMD_PEER_REQUEST_VIDEO;
+            peer->got_request_video = 0;
         }
         peer = peer->next;
     }
@@ -650,7 +650,7 @@ bmd_peer_queue_all_audio(struct bmd_info* bmd, struct stream* out_s)
     peer = bmd->peer_head;
     while (peer != NULL)
     {
-        if (peer->flags & BMD_PEER_SUBSCRIBE_AUDIO)
+        if (peer->got_subscribe_audio)
         {
             rv = bmd_peer_queue(peer, out_s);
             if (rv != BMD_ERROR_NONE)
