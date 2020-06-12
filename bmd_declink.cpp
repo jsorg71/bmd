@@ -165,18 +165,23 @@ DeckLinkCaptureDelegate::
         bytes = stride_bytes * video_height;
         if (bytes > av_info->vdata_alloc_bytes)
         {
+            LOGLN0((LOG_INFO, LOGS "free, alloc vdata old %d new %d", LOGP,
+                    av_info->vdata_alloc_bytes, bytes));
             free(av_info->vdata);
             av_info->vdata = (char*)malloc(bytes);
-            av_info->vdata_alloc_bytes = bytes;
+            av_info->vdata_alloc_bytes = av_info->vdata == NULL ? 0 : bytes;
         }
-        av_info->vformat = 0;
-        av_info->vwidth = video_width;
-        av_info->vheight = video_height;
-        av_info->vstride_bytes = stride_bytes;
-        av_info->vtime = now;
-        memcpy(av_info->vdata, video_data, bytes);
-        av_info->got_video = 1;
-        do_sig = 1;
+        if (av_info->vdata != NULL)
+        {
+            av_info->vformat = 0;
+            av_info->vwidth = video_width;
+            av_info->vheight = video_height;
+            av_info->vstride_bytes = stride_bytes;
+            av_info->vtime = now;
+            memcpy(av_info->vdata, video_data, bytes);
+            av_info->got_video = 1;
+            do_sig = 1;
+        }
     }
     if ((audioFrame != NULL) && (!(av_info->got_audio)))
     {
@@ -188,18 +193,23 @@ DeckLinkCaptureDelegate::
         bytes = audio_frame_count * 2 * 2;
         if (bytes > av_info->adata_alloc_bytes)
         {
+            LOGLN0((LOG_INFO, LOGS "free, alloc adata old %d new %d", LOGP,
+                    av_info->adata_alloc_bytes, bytes));
             free(av_info->adata);
             av_info->adata = (char*)malloc(bytes);
-            av_info->adata_alloc_bytes = bytes;
+            av_info->adata_alloc_bytes = av_info->adata == NULL ? 0 : bytes;
         }
-        av_info->aformat = 0;
-        av_info->achannels = 2;
-        av_info->abytes_per_sample = 2;
-        av_info->asamples = audio_frame_count;
-        av_info->atime = now;
-        memcpy(av_info->adata, audio_data, bytes);
-        av_info->got_audio = 1;
-        do_sig = 1;
+        if (av_info->adata != NULL)
+        {
+            av_info->aformat = 0;
+            av_info->achannels = 2;
+            av_info->abytes_per_sample = 2;
+            av_info->asamples = audio_frame_count;
+            av_info->atime = now;
+            memcpy(av_info->adata, audio_data, bytes);
+            av_info->got_audio = 1;
+            do_sig = 1;
+        }
     }
     pthread_mutex_unlock(&(av_info->av_mutex));
     if (do_sig)
