@@ -60,6 +60,8 @@ struct bmd_declink
     IDeckLinkInput* deckLinkInput;
 };
 
+extern const char g_mode_names[][16]; /* in bmd.c */
+
 /******************************************************************************/
 DeckLinkCaptureDelegate::DeckLinkCaptureDelegate(void)
 {
@@ -259,16 +261,21 @@ bmd_declink_get_IDeckLinkInput(IDeckLink* deckLink)
 
 /******************************************************************************/
 static IDeckLinkDisplayMode*
-bmd_declink_get_IDeckLinkDisplayMode(IDeckLinkInput* deckLinkInput)
+bmd_declink_get_IDeckLinkDisplayMode(int mode_index,
+                                     IDeckLinkInput* deckLinkInput)
 {
     IDeckLinkDisplayModeIterator* displayModeIterator;
     IDeckLinkDisplayMode* displayMode;
     const char* displayModeName;
+    const char* requested_mode_name;
 
     if (FAILED(deckLinkInput->GetDisplayModeIterator(&displayModeIterator)))
     {
         return NULL;
     }
+    requested_mode_name = g_mode_names[mode_index];
+    LOGLN0((LOG_INFO, LOGS "requested_mode_name %s", LOGP,
+            requested_mode_name));
     for (;;)
     {
         if (FAILED(displayModeIterator->Next(&displayMode)))
@@ -280,7 +287,8 @@ bmd_declink_get_IDeckLinkDisplayMode(IDeckLinkInput* deckLinkInput)
             displayMode->Release();
             break;
         }
-        if (strcmp(displayModeName, "720p59.94") == 0)
+        LOGLN10((LOG_ERROR, LOGS "displayModeName %s", LOGP, displayModeName));
+        if (strcmp(displayModeName, requested_mode_name) == 0)
         {
             delete displayModeName;
             displayModeIterator->Release();
@@ -295,7 +303,7 @@ bmd_declink_get_IDeckLinkDisplayMode(IDeckLinkInput* deckLinkInput)
 
 /******************************************************************************/
 int
-bmd_declink_create(struct bmd_av_info* av_info, void** obj)
+bmd_declink_create(int mode_index, struct bmd_av_info* av_info, void** obj)
 {
     HRESULT result;
     struct bmd_declink* self;
@@ -368,7 +376,7 @@ bmd_declink_create(struct bmd_av_info* av_info, void** obj)
                 LOGP));
         return BMD_ERROR_DECKLINK;
     }
-    displayMode = bmd_declink_get_IDeckLinkDisplayMode(deckLinkInput);
+    displayMode = bmd_declink_get_IDeckLinkDisplayMode(mode_index, deckLinkInput);
     if (displayMode == NULL)
     {
         LOGLN0((LOG_ERROR, LOGS "bmd_declink_get_IDeckLinkDisplayMode failed",

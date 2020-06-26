@@ -47,7 +47,28 @@ struct settings_info
     char bmd_uds_name[256];
     char bmd_log_filename[256];
     int daemonize;
-    int pad0;
+    int mode_index;
+};
+
+#define NUM_MODE_NAMES 16
+const char g_mode_names[NUM_MODE_NAMES][16] =
+{
+    "525i59.94 NTSC",
+    "525p23.98 NTSC",
+    "625i50 PAL",
+    "525p59.94 NTSC",
+    "625p50 PAL",
+    "1080p23.98",
+    "1080p24",
+    "1080p25",
+    "1080p29.97",
+    "1080p30",
+    "1080i50",
+    "1080i59.94",
+    "1080i60",
+    "720p50",
+    "720p59.94",
+    "720p60"
 };
 
 /******************************************************************************/
@@ -310,6 +331,11 @@ process_args(int argc, char** argv, struct settings_info* settings)
             index++;
             strncpy(settings->bmd_uds_name, argv[index], 255);
         }
+        else if (strcmp("-m", argv[index]) == 0)
+        {
+            index++;
+            settings->mode_index = atoi(argv[index]) % NUM_MODE_NAMES;
+        }
         else
         {
             return BMD_ERROR_PARAM;
@@ -322,6 +348,8 @@ process_args(int argc, char** argv, struct settings_info* settings)
 static int
 printf_help(int argc, char** argv)
 {
+    int index;
+
     if (argc < 1)
     {
         return BMD_ERROR_NONE;
@@ -329,6 +357,11 @@ printf_help(int argc, char** argv)
     printf("%s: command line options\n", argv[0]);
     printf("    -D      run daemon, example -D\n");
     printf("    -n      uds name, %%d will be pid, example -n %s\n", BMD_UDS);
+    printf("    -m      mode index, default 14\n");
+    for (index = 0; index < NUM_MODE_NAMES; index++)
+    {
+        printf("                %d - %s\n", index, g_mode_names[index]);
+    }
     return BMD_ERROR_NONE;
 }
 
@@ -380,7 +413,8 @@ bmd_start(struct bmd_info* bmd, struct settings_info* settings)
     bmd->av_info = (struct bmd_av_info*)calloc(1, sizeof(struct bmd_av_info));
     pthread_mutex_init(&(bmd->av_info->av_mutex), NULL);
     pipe(bmd->av_info->av_pipe);
-    error = bmd_declink_create(bmd->av_info, &(bmd->declink));
+    error = bmd_declink_create(settings->mode_index, bmd->av_info,
+                               &(bmd->declink));
     if (error != BMD_ERROR_NONE)
     {
         return error;
@@ -574,6 +608,7 @@ main(int argc, char** argv)
         LOGLN0((LOG_ERROR, LOGS "calloc failed", LOGP));
         return 1;
     }
+    settings->mode_index = 14;
     if (process_args(argc, argv, settings) != 0)
     {
         printf_help(argc, argv);

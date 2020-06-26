@@ -52,7 +52,7 @@ extern "C"
 #endif
 
 int
-bmd_declink_create(struct bmd_av_info* av_info, void** obj);
+bmd_declink_create(int mode_index, struct bmd_av_info* av_info, void** obj);
 int
 bmd_declink_delete(void* obj);
 int
