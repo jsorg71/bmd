@@ -411,6 +411,10 @@ bmd_start(struct bmd_info* bmd, struct settings_info* settings)
     (void)settings;
     LOGLN0((LOG_INFO, LOGS, LOGP));
     bmd->av_info = (struct bmd_av_info*)calloc(1, sizeof(struct bmd_av_info));
+    if (bmd->av_info == NULL)
+    {
+        return BMD_ERROR_MEMORY;
+    }
     pthread_mutex_init(&(bmd->av_info->av_mutex), NULL);
     pipe(bmd->av_info->av_pipe);
     error = bmd_declink_create(settings->mode_index, bmd->av_info,
