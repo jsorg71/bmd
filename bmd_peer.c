@@ -548,6 +548,7 @@ static int
 bmd_queue_version(struct bmd_info* bmd, struct peer_info* peer)
 {
     struct stream* out_s;
+    int rv;
 
     (void)bmd;
     out_s = (struct stream*)calloc(1, sizeof(struct stream));
@@ -570,10 +571,10 @@ bmd_queue_version(struct bmd_info* bmd, struct peer_info* peer)
     out_uint8s(out_s, 12);
     out_s->end = out_s->p;
     out_s->p = out_s->data;
-    bmd_peer_queue(peer, out_s);
+    rv = bmd_peer_queue(peer, out_s);
     free(out_s->data);
     free(out_s);
-    return BMD_ERROR_NONE;
+    return rv;
 }
 
 /*****************************************************************************/
@@ -625,6 +626,7 @@ bmd_peer_cleanup(struct bmd_info* bmd)
 int
 bmd_peer_queue_all_video(struct bmd_info* bmd)
 {
+    int rv;
     struct peer_info* peer;
 
     peer = bmd->peer_head;
@@ -632,7 +634,11 @@ bmd_peer_queue_all_video(struct bmd_info* bmd)
     {
         if (peer->got_request_video)
         {
-            bmd_peer_queue_frame(bmd, peer);
+            rv = bmd_peer_queue_frame(bmd, peer);
+            if (rv != BMD_ERROR_NONE)
+            {
+                return rv;
+            }
             peer->got_request_video = 0;
         }
         peer = peer->next;
@@ -677,6 +683,11 @@ bmd_peer_queue(struct peer_info* peer, struct stream* out_s)
     }
     if (out_s->data == NULL)
     {
+        if (out_s->fd < 1)
+        {
+            free(lout_s);
+            return BMD_ERROR_FD;
+        }
         lout_s->fd = dup(out_s->fd);
         if (lout_s->fd == -1)
         {

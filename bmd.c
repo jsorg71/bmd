@@ -415,17 +415,30 @@ bmd_start(struct bmd_info* bmd, struct settings_info* settings)
     {
         return BMD_ERROR_MEMORY;
     }
-    pthread_mutex_init(&(bmd->av_info->av_mutex), NULL);
-    pipe(bmd->av_info->av_pipe);
+    if (pthread_mutex_init(&(bmd->av_info->av_mutex), NULL) != 0)
+    {
+        free(bmd->av_info);
+        bmd->av_info = NULL;
+        return BMD_ERROR_MUTEX;
+    }
+    if (pipe(bmd->av_info->av_pipe) != 0)
+    {
+        pthread_mutex_destroy(&(bmd->av_info->av_mutex));
+        free(bmd->av_info);
+        bmd->av_info = NULL;
+        return BMD_ERROR_PIPE;
+    }
     error = bmd_declink_create(settings->mode_index, bmd->av_info,
                                &(bmd->declink));
     if (error != BMD_ERROR_NONE)
     {
+        /* bmd_cleanup will cleanup */
         return error;
     }
     error = bmd_declink_start(bmd->declink);
     if (error != BMD_ERROR_NONE)
     {
+        /* bmd_cleanup will cleanup */
         return error;
     }
     return BMD_ERROR_NONE;

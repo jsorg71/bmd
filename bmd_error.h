@@ -37,6 +37,8 @@
 #define BMD_ERROR_NOT_SUPPORTED     15
 #define BMD_ERROR_STOP              16
 #define BMD_ERROR_DECKLINK          17
+#define BMD_ERROR_MUTEX             18
+#define BMD_ERROR_PIPE              19
 
 #endif
 
