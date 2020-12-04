@@ -159,7 +159,7 @@ bmd_process_av(struct bmd_info* bmd)
         LOGLN10((LOG_INFO, LOGS "got video", LOGP));
         av_info->got_video = 0;
         bytes = av_info->vwidth * av_info->vheight * 2;
-        nv12_data = (char*)malloc(bytes);
+        nv12_data = xnew(char, bytes);
         if (nv12_data != NULL)
         {
             dst_data[0] = nv12_data;
@@ -177,11 +177,11 @@ bmd_process_av(struct bmd_info* bmd)
         av_info->got_audio = 0;
         bytes = av_info->achannels * av_info->abytes_per_sample *
                 av_info->asamples;
-        out_s = (struct stream*)calloc(1, sizeof(struct stream));
+        out_s = xnew0(struct stream, 1);
         if (out_s != NULL)
         {
             out_s->size = bytes + 1024;
-            out_s->data = (char*)malloc(out_s->size);
+            out_s->data = xnew(char, out_s->size);
             if (out_s->data != NULL)
             {
                 out_s->p = out_s->data;
@@ -237,7 +237,7 @@ bmd_process_av(struct bmd_info* bmd)
             return 1;
         }
         src8 = nv12_data;
-        dst8 = ydata;
+        dst8 = (char*)ydata;
         bytes = av_info->vwidth;
         if (bytes > ydata_stride_bytes)
         {
@@ -257,7 +257,7 @@ bmd_process_av(struct bmd_info* bmd)
             return 1;
         }
         src8 = nv12_data + av_info->vwidth * av_info->vheight;
-        dst8 = uvdata;
+        dst8 = (char*)uvdata;
         bytes = av_info->vwidth;
         if (bytes > uvdata_stride_bytes)
         {
@@ -410,7 +410,7 @@ bmd_start(struct bmd_info* bmd, struct settings_info* settings)
 
     (void)settings;
     LOGLN0((LOG_INFO, LOGS, LOGP));
-    bmd->av_info = (struct bmd_av_info*)calloc(1, sizeof(struct bmd_av_info));
+    bmd->av_info = xnew0(struct bmd_av_info, 1);
     if (bmd->av_info == NULL)
     {
         return BMD_ERROR_MEMORY;
@@ -475,25 +475,22 @@ bmd_process_fds(struct bmd_info* bmd, struct settings_info* settings,
     rv = BMD_ERROR_NONE;
     for (;;)
     {
+        FD_ZERO(&rfds);
+        FD_ZERO(&wfds);
+        FD_SET(bmd->listener, &rfds);
         max_fd = bmd->listener;
+        FD_SET(g_term_pipe[0], &rfds);
         if (g_term_pipe[0] > max_fd)
         {
             max_fd = g_term_pipe[0];
         }
         if (bmd->av_info != NULL)
         {
+            FD_SET(bmd->av_info->av_pipe[0], &rfds);
             if (bmd->av_info->av_pipe[0] > max_fd)
             {
                 max_fd = bmd->av_info->av_pipe[0];
             }
-        }
-        FD_ZERO(&rfds);
-        FD_ZERO(&wfds);
-        FD_SET(bmd->listener, &rfds);
-        FD_SET(g_term_pipe[0], &rfds);
-        if (bmd->av_info != NULL)
-        {
-            FD_SET(bmd->av_info->av_pipe[0], &rfds);
         }
         if (bmd_peer_get_fds(bmd, &max_fd, &rfds, &wfds) != 0)
         {
@@ -619,10 +616,10 @@ main(int argc, char** argv)
     struct sockaddr_un s;
     socklen_t sock_len;
 
-    settings = (struct settings_info*)calloc(1, sizeof(struct settings_info));
+    settings = xnew0(struct settings_info, 1);
     if (settings == NULL)
     {
-        LOGLN0((LOG_ERROR, LOGS "calloc failed", LOGP));
+        LOGLN0((LOG_ERROR, LOGS "xnew0 failed", LOGP));
         return 1;
     }
     settings->mode_index = 14;
@@ -669,10 +666,10 @@ main(int argc, char** argv)
         pid = getpid();
         log_init(LOG_FLAG_STDOUT, 4, NULL);
     }
-    bmd = (struct bmd_info*)calloc(1, sizeof(struct bmd_info));
+    bmd = xnew0(struct bmd_info, 1);
     if (bmd == NULL)
     {
-        LOGLN0((LOG_ERROR, LOGS "calloc failed", LOGP));
+        LOGLN0((LOG_ERROR, LOGS "xnew0 failed", LOGP));
         free(settings);
         return 1;
     }

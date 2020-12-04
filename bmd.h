@@ -31,6 +31,8 @@
 #define BMD_PDU_CODE_VIDEO                  4
 #define BMD_PDU_CODE_VERSION                5
 
+extern const char g_mode_names[][16]; /* in bmd.c */
+
 struct bmd_info
 {
     int listener;

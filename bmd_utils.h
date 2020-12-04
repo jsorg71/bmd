@@ -19,6 +19,9 @@
 #ifndef _BMD_UTILS_H_
 #define _BMD_UTILS_H_
 
+#define xnew(type_, count_) (type_ *) malloc(count_ * sizeof(type_))
+#define xnew0(type_, count_) (type_ *) calloc(count_, sizeof(type_))
+
 #ifdef __cplusplus
 extern "C"
 {

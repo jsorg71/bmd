@@ -60,8 +60,6 @@ struct bmd_declink
     IDeckLinkInput* deckLinkInput;
 };
 
-extern const char g_mode_names[][16]; /* in bmd.c */
-
 /******************************************************************************/
 DeckLinkCaptureDelegate::DeckLinkCaptureDelegate(void)
 {
