@@ -288,11 +288,11 @@ bmd_declink_get_IDeckLinkDisplayMode(int mode_index,
         LOGLN10((LOG_ERROR, LOGS "displayModeName %s", LOGP, displayModeName));
         if (strcmp(displayModeName, requested_mode_name) == 0)
         {
-            delete displayModeName;
+            free((void*)displayModeName); /* yup, the API needs cast */
             displayModeIterator->Release();
             return displayMode;
         }
-        delete displayModeName;
+        free((void*)displayModeName); /* yup, the API needs cast */
         displayMode->Release();
     }
     displayModeIterator->Release();
