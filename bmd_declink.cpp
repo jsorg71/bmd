@@ -168,7 +168,7 @@ DeckLinkCaptureDelegate::
             LOGLN0((LOG_INFO, LOGS "free, alloc vdata old %d new %d", LOGP,
                     av_info->vdata_alloc_bytes, bytes));
             free(av_info->vdata);
-            av_info->vdata = (char*)malloc(bytes);
+            av_info->vdata = xnew(char, bytes);
             av_info->vdata_alloc_bytes = av_info->vdata == NULL ? 0 : bytes;
         }
         if (av_info->vdata != NULL)
@@ -196,7 +196,7 @@ DeckLinkCaptureDelegate::
             LOGLN0((LOG_INFO, LOGS "free, alloc adata old %d new %d", LOGP,
                     av_info->adata_alloc_bytes, bytes));
             free(av_info->adata);
-            av_info->adata = (char*)malloc(bytes);
+            av_info->adata = xnew(char, bytes);
             av_info->adata_alloc_bytes = av_info->adata == NULL ? 0 : bytes;
         }
         if (av_info->adata != NULL)
@@ -407,7 +407,7 @@ bmd_declink_create(int mode_index, struct bmd_av_info* av_info, void** obj)
         deckLinkInput->Release();
         return BMD_ERROR_DECKLINK;
     }
-    self = (struct bmd_declink*)calloc(1, sizeof(struct bmd_declink));
+    self = xnew0(struct bmd_declink, 1);
     if (self == NULL)
     {
         deckLinkInput->Release();
