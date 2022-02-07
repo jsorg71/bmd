@@ -328,28 +328,25 @@ bmd_peer_send_fd(int sck, int fd)
     ssize_t size;
     struct msghdr msg;
     struct iovec iov;
-    union _cmsgu
-    {
-        struct cmsghdr cmsghdr;
-        char control[CMSG_SPACE(sizeof(int))];
-    } cmsgu;
+    char control[CMSG_SPACE(sizeof(int))];
     struct cmsghdr *cmsg;
-    int *fds;
+    int* fds;
     char text[4] = "int";
 
+    memset(&iov, 0, sizeof(iov));
     iov.iov_base = text;
     iov.iov_len = 4;
-    msg.msg_name = NULL;
-    msg.msg_namelen = 0;
+    memset(&msg, 0, sizeof(msg));
     msg.msg_iov = &iov;
     msg.msg_iovlen = 1;
-    msg.msg_control = cmsgu.control;
-    msg.msg_controllen = sizeof(cmsgu.control);
+    memset(control, 0, sizeof(control));
+    msg.msg_control = control;
+    msg.msg_controllen = sizeof(control);
     cmsg = CMSG_FIRSTHDR(&msg);
     cmsg->cmsg_len = CMSG_LEN(sizeof(int));
     cmsg->cmsg_level = SOL_SOCKET;
     cmsg->cmsg_type = SCM_RIGHTS;
-    fds = (int *) CMSG_DATA(cmsg);
+    fds = (int*)CMSG_DATA(cmsg);
     *fds = fd;
     size = sendmsg(sck, &msg, 0);
     LOGLN10((LOG_INFO, LOGS "size %d", LOGP, (int)size));
